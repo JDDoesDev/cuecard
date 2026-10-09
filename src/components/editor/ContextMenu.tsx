@@ -7,6 +7,8 @@ interface ContextMenuProps {
   onClose: () => void;
   onCopy: () => void;
   onPaste: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
   hasClipboard: boolean;
   onBringForward: () => void;
   onSendBackward: () => void;
@@ -15,7 +17,7 @@ interface ContextMenuProps {
 }
 
 /**
- * Right-click context menu for element z-order control.
+ * Right-click context menu: clipboard, duplicate/delete, and z-order control.
  */
 export function ContextMenu({
   x,
@@ -23,6 +25,8 @@ export function ContextMenu({
   onClose,
   onCopy,
   onPaste,
+  onDuplicate,
+  onDelete,
   hasClipboard,
   onBringForward,
   onSendBackward,
@@ -82,6 +86,20 @@ export function ContextMenu({
       >
         Paste
         <span className={styles.shortcut}>⌘V</span>
+      </button>
+      <button
+        className={styles.menuItem}
+        onClick={() => handleAction(onDuplicate)}
+      >
+        Duplicate
+        <span className={styles.shortcut}>⌘D</span>
+      </button>
+      <button
+        className={styles.menuItem}
+        onClick={() => handleAction(onDelete)}
+      >
+        Delete
+        <span className={styles.shortcut}>Del</span>
       </button>
       <div className={styles.separator} />
       <button

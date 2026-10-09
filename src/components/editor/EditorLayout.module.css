@@ -2,10 +2,53 @@
    EditorLayout — Three-panel editor structure
    ============================================================================ */
 
-.editorLayout {
+.editorRoot {
   display: flex;
+  flex-direction: column;
   height: 100%;
   overflow: hidden;
+}
+
+.editorLayout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Autosave / storage banners */
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  font-size: 13px;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+.bannerError {
+  background: #fdecea;
+  color: #8a1c13;
+  border-bottom: 1px solid #f5c2bd;
+}
+
+.bannerNotice {
+  background: #fff8e1;
+  color: #6b4e00;
+  border-bottom: 1px solid #f3e0a3;
+}
+
+.bannerDismiss {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
 }
 
 /* Left Panel: Slide Thumbnails */
@@ -58,4 +101,10 @@
   .notesArea {
     height: 140px;
   }
+}
+
+.bannerActions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
 }

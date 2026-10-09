@@ -102,19 +102,101 @@ export function computeSnap(
     }
   }
 
-  // Apply snap + bounds clamping
-  // Note: Y uses lenient clamp (0–100) because stored height may not match
-  // rendered height (auto-sized content). The drag component handles precise
-  // bottom-edge clamping using the actual rendered height.
+  // Apply snap + bounds clamping (same bounds the drag handler uses)
   let x = bestX ? bestX.snappedX : proposed.x;
   let y = bestY ? bestY.snappedY : proposed.y;
 
   x = Math.max(0, Math.min(100 - size.width, x));
-  y = Math.max(0, Math.min(100, y));
+  y = Math.max(0, Math.min(100 - size.height, y));
 
   const activeGuides: SnapLine[] = [];
   if (bestX) activeGuides.push({ axis: 'x', position: bestX.guide });
   if (bestY) activeGuides.push({ axis: 'y', position: bestY.guide });
 
   return { snappedPosition: { x, y }, activeGuides };
+}
+
+/** Which edges a resize handle moves. */
+export type ResizeHandleDirection = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
+
+export interface ResizeSnapResult {
+  snappedRect: SnapRect;
+  activeGuides: SnapLine[];
+}
+
+/**
+ * Snap a resize: only the edges being dragged snap (e.g. an 'e' resize snaps
+ * the right edge by changing width; x stays put). Edges that would collapse
+ * the element below `minSize` are not snapped.
+ */
+export function computeResizeSnap(
+  direction: ResizeHandleDirection,
+  proposed: SnapRect,
+  siblings: SnapRect[],
+  threshold: number = DEFAULT_THRESHOLD,
+  minSize = 5,
+): ResizeSnapResult {
+  const xTargets: number[] = [0, 50, 100];
+  const yTargets: number[] = [0, 50, 100];
+  for (const sib of siblings) {
+    xTargets.push(sib.x, sib.x + sib.width, sib.x + sib.width / 2);
+    yTargets.push(sib.y, sib.y + sib.height, sib.y + sib.height / 2);
+  }
+
+  const closest = (value: number, targets: number[]): number | null => {
+    let best: number | null = null;
+    let bestDist = Infinity;
+    for (const t of targets) {
+      const d = Math.abs(value - t);
+      if (d <= threshold && d < bestDist) {
+        best = t;
+        bestDist = d;
+      }
+    }
+    return best;
+  };
+
+  let left = proposed.x;
+  let right = proposed.x + proposed.width;
+  let top = proposed.y;
+  let bottom = proposed.y + proposed.height;
+  const activeGuides: SnapLine[] = [];
+
+  if (direction.includes('w')) {
+    const t = closest(left, xTargets);
+    if (t !== null && right - t >= minSize) {
+      left = t;
+      activeGuides.push({ axis: 'x', position: t });
+    }
+  } else if (direction.includes('e')) {
+    const t = closest(right, xTargets);
+    if (t !== null && t - left >= minSize) {
+      right = t;
+      activeGuides.push({ axis: 'x', position: t });
+    }
+  }
+
+  if (direction.includes('n')) {
+    const t = closest(top, yTargets);
+    if (t !== null && bottom - t >= minSize) {
+      top = t;
+      activeGuides.push({ axis: 'y', position: t });
+    }
+  } else if (direction.includes('s')) {
+    const t = closest(bottom, yTargets);
+    if (t !== null && t - top >= minSize) {
+      bottom = t;
+      activeGuides.push({ axis: 'y', position: t });
+    }
+  }
+
+  left = Math.max(0, left);
+  top = Math.max(0, top);
+  right = Math.min(100, right);
+  bottom = Math.min(100, bottom);
+
+  return {
+    snappedRect: { x: left, y: top, width: right - left, height: bottom - top },
+    activeGuides,
+  };
 }

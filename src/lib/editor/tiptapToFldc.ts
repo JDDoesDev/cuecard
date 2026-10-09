@@ -1,4 +1,10 @@
 import type { Slide, SlideElement } from '@/types/slide';
+import {
+  normalizeTextAlign,
+  withElementTextAlign,
+  collapseBlockAlignment,
+  serializeTextBody,
+} from './textAlign';
 
 /**
  * Convert Tiptap HTML output back to an updated FLDC slide.
@@ -43,43 +49,61 @@ function htmlToElement(html: string, original: SlideElement): SlideElement {
 
   switch (original.type) {
     case 'heading': {
-      const heading = doc.querySelector('h1, h2, h3, h4, h5, h6');
-      return { ...original, content: heading?.innerHTML || '' };
+      // Clear-formatting can turn the heading into a paragraph — keep its text
+      const heading =
+        doc.querySelector<HTMLElement>('h1, h2, h3, h4, h5, h6') ??
+        (doc.body.firstElementChild as HTMLElement | null);
+      return withElementTextAlign(
+        { ...original, content: heading?.innerHTML || '' },
+        normalizeTextAlign(heading?.style.textAlign)
+      );
     }
 
     case 'text': {
-      const paragraphs = doc.querySelectorAll('body > p');
-      if (paragraphs.length > 0) {
-        const content = Array.from(paragraphs)
-          .map((p) => p.innerHTML)
-          .join('\n');
-        return { ...original, content };
-      }
-      // Fallback: use body innerHTML (handles content with block elements)
-      return { ...original, content: doc.body.innerHTML || '' };
+      // Keep every top-level block (paragraphs, lists, tables…), not just <p>.
+      // Uniform alignment moves to the element; mixed alignment stays in HTML.
+      const blocks = Array.from(doc.body.children) as HTMLElement[];
+      const { uniform, align } = collapseBlockAlignment(blocks);
+      const content = serializeTextBody(doc.body);
+      return withElementTextAlign({ ...original, content }, uniform ? align : undefined);
     }
 
     case 'list': {
       const topList = doc.querySelector('ul, ol');
-      if (!topList) return { ...original, items: [], ordered: false };
+      if (!topList) {
+        // List was converted to paragraphs (e.g. clear formatting): keep the text
+        const paragraphs = Array.from(doc.body.querySelectorAll<HTMLElement>(':scope > p'));
+        const firstAlign = normalizeTextAlign(paragraphs[0]?.style.textAlign);
+        return withElementTextAlign(
+          { ...original, items: paragraphs.map((p) => p.innerHTML) },
+          firstAlign
+        );
+      }
       // Only select direct child <li> elements (not nested ones)
       const topItems = Array.from(topList.children).filter(
         (child) => child.tagName === 'LI'
       );
+      const itemAligns: Array<string | undefined> = [];
       const items = topItems.map((li) => {
         // Extract the text content (from <p> tags) and any nested lists separately
         const parts: string[] = [];
-        for (const child of Array.from(li.children)) {
+        let itemAlign: string | undefined;
+        for (const child of Array.from(li.children) as HTMLElement[]) {
           if (child.tagName === 'UL' || child.tagName === 'OL') {
             parts.push(child.outerHTML);
           } else {
+            itemAlign ??= normalizeTextAlign(child.style.textAlign) ?? '';
             parts.push(child.innerHTML);
           }
         }
+        itemAligns.push(itemAlign || undefined);
         return parts.join('').trim();
       });
       const ordered = topList.tagName === 'OL';
-      return { ...original, items, ordered };
+      // Lists have one alignment for the whole element: use the majority
+      // alignment of the items (ties go to the most recently changed value,
+      // i.e. not the element's previous alignment)
+      return withElementTextAlign({ ...original, items, ordered }, majorityAlign(itemAligns, original));
     }
 
     case 'code': {
@@ -108,4 +132,21 @@ function htmlToElement(html: string, original: SlideElement): SlideElement {
     case 'line':
       return original;
   }
+}
+
+/** Most common item alignment; on a tie prefer a value different from the current one. */
+function majorityAlign(aligns: Array<string | undefined>, original: SlideElement): string | undefined {
+  if (aligns.length === 0) return undefined;
+  const counts = new Map<string, number>();
+  for (const a of aligns) counts.set(a ?? 'left', (counts.get(a ?? 'left') ?? 0) + 1);
+  const previous = (original as { textAlign?: string }).textAlign ?? 'left';
+  let best = previous;
+  let bestCount = counts.get(previous) ?? 0;
+  for (const [align, count] of counts) {
+    if (count > bestCount || (count === bestCount && align !== previous)) {
+      best = align;
+      bestCount = count;
+    }
+  }
+  return best;
 }

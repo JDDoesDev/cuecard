@@ -1,4 +1,10 @@
 import type { Slide, SlideElement } from '@/types/slide';
+import {
+  getElementTextAlign,
+  textAlignStyleAttr,
+  hasBlockHtml,
+  applyAlignToBlocks,
+} from './textAlign';
 
 /**
  * Convert a single FLDC element to an HTML string for Tiptap to parse.
@@ -28,19 +34,32 @@ export function fldcToTiptap(
  * Convert a single SlideElement to an HTML string.
  */
 export function elementToHTML(element: SlideElement): string {
+  // Element-level alignment is expanded onto every block so Tiptap shows it
+  const align = getElementTextAlign(element);
+  const alignAttr = textAlignStyleAttr(align);
+
   switch (element.type) {
     case 'heading':
-      return `<h${element.level}>${element.content}</h${element.level}>`;
+      return `<h${element.level}${alignAttr}>${element.content}</h${element.level}>`;
 
     case 'text': {
       // If content already contains HTML block tags, pass through
-      if (/<(?:p|div|table|ul|ol|h[1-6])\b/i.test(element.content)) {
-        return element.content;
+      if (hasBlockHtml(element.content)) {
+        if (!alignAttr || typeof DOMParser === 'undefined') return element.content;
+        const doc = new DOMParser().parseFromString(element.content, 'text/html');
+        applyAlignToBlocks(doc.body, align);
+        return doc.body.innerHTML;
       }
-      // Split by newlines into separate paragraphs
-      const lines = element.content.split('\n');
-      return lines
-        .map((line) => `<p>${line || ''}</p>`)
+      // Markdown source: blank lines separate paragraphs; a single newline is a
+      // soft break (rendered as a space) unless the lines are markdown block
+      // structure (lists, tables, quotes, headings), which keep one line each.
+      const blockMarker = /^\s*(?:[-*+]\s|\d+[.)]\s|\||>|#)/;
+      const paragraphs = element.content.split(/\n{2,}/).flatMap((chunk) => {
+        const lines = chunk.split('\n');
+        return lines.some((l) => blockMarker.test(l)) ? lines : [lines.join(' ')];
+      });
+      return paragraphs
+        .map((line) => `<p${alignAttr}>${line || ''}</p>`)
         .join('');
     }
 
@@ -53,9 +72,9 @@ export function elementToHTML(element: SlideElement): string {
           if (nestedListMatch) {
             const text = nestedListMatch[1];
             const nestedHtml = nestedListMatch[2];
-            return `<li><p>${text}</p>${nestedHtml}</li>`;
+            return `<li><p${alignAttr}>${text}</p>${nestedHtml}</li>`;
           }
-          return `<li><p>${item}</p></li>`;
+          return `<li><p${alignAttr}>${item}</p></li>`;
         })
         .join('');
       return `<${tag}>${items}</${tag}>`;

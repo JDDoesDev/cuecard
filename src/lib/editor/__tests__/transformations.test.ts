@@ -64,16 +64,16 @@ describe('fldcToTiptap (element to HTML)', () => {
     expect(html).toBe('<p>Hello world</p>');
   });
 
-  it('splits multiline text into multiple paragraphs', () => {
+  it('splits blank-line separated markdown into paragraphs (single newline = soft break)', () => {
     const element: SlideElement = {
       id: sid(), type: 'text',
       position: { x: 10, y: 20, width: 80, height: 40 },
-      content: 'Line 1\nLine 2\nLine 3',
+      content: 'Line 1\n\nLine 2\nLine 3',
     };
 
     const html = elementToHTML(element);
 
-    expect(html).toBe('<p>Line 1</p><p>Line 2</p><p>Line 3</p>');
+    expect(html).toBe('<p>Line 1</p><p>Line 2 Line 3</p>');
   });
 
   it('passes through HTML content in text elements', () => {
@@ -163,7 +163,7 @@ describe('tiptapToFldc (HTML to element)', () => {
     const result = tiptapToFldc('<p>Line 1</p><p>Line 2</p>', slide, 0);
 
     if (result.elements[0].type === 'text') {
-      expect(result.elements[0].content).toBe('Line 1\nLine 2');
+      expect(result.elements[0].content).toBe('<p>Line 1</p><p>Line 2</p>');
     }
   });
 
@@ -175,7 +175,7 @@ describe('tiptapToFldc (HTML to element)', () => {
     const result = tiptapToFldc('<p>Hello <em>italic</em> and <u>underline</u></p>', slide, 0);
 
     if (result.elements[0].type === 'text') {
-      expect(result.elements[0].content).toBe('Hello <em>italic</em> and <u>underline</u>');
+      expect(result.elements[0].content).toBe('<p>Hello <em>italic</em> and <u>underline</u></p>');
     }
   });
 

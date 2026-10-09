@@ -1,5 +1,6 @@
-import { useCallback, useRef, useState, useEffect } from 'react';
+import { useCallback, useRef, useState, useEffect, useReducer } from 'react';
 import type { Editor } from '@tiptap/react';
+import { applyEditorTextAlign } from '@/lib/editor/editorTextAlign';
 import styles from './EditorFormatToolbar.module.css';
 
 interface EditorFormatToolbarProps {
@@ -29,6 +30,31 @@ export function EditorFormatToolbar({ editor }: EditorFormatToolbarProps) {
   const [showHighlightPicker, setShowHighlightPicker] = useState(false);
   const [showFontSize, setShowFontSize] = useState(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
+
+  // The editor is created with shouldRerenderOnTransaction: false, so subscribe
+  // explicitly to keep active states (bold, alignment, …) in sync.
+  const [, forceRender] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    editor.on('transaction', forceRender);
+    return () => {
+      editor.off('transaction', forceRender);
+    };
+  }, [editor]);
+
+  /**
+   * Text boxes align as a whole: with a collapsed cursor, apply to every block
+   * of the element; with a range selection, apply to the selected blocks.
+   */
+  const setAlign = useCallback(
+    (align: 'left' | 'center' | 'right' | 'justify') => {
+      applyEditorTextAlign(editor, align);
+    },
+    [editor]
+  );
+  const isAlignActive = (align: 'left' | 'center' | 'right' | 'justify') =>
+    align === 'left'
+      ? !['center', 'right', 'justify'].some((a) => editor.isActive({ textAlign: a }))
+      : editor.isActive({ textAlign: align });
 
   // Close popovers on outside click
   useEffect(() => {
@@ -246,9 +272,10 @@ export function EditorFormatToolbar({ editor }: EditorFormatToolbarProps) {
       <span className={styles.sep} />
 
       {/* Alignment */}
-      {btn('\u2261', () => editor.chain().focus().setTextAlign('left').run(), editor.isActive({ textAlign: 'left' }), 'Align left')}
-      {btn('\u2261', () => editor.chain().focus().setTextAlign('center').run(), editor.isActive({ textAlign: 'center' }), 'Align center', { textAlign: 'center' })}
-      {btn('\u2261', () => editor.chain().focus().setTextAlign('right').run(), editor.isActive({ textAlign: 'right' }), 'Align right', { textAlign: 'right' })}
+      {btn('\u2261', () => setAlign('left'), isAlignActive('left'), 'Align left (Ctrl+Shift+L)')}
+      {btn('\u2261', () => setAlign('center'), isAlignActive('center'), 'Align center (Ctrl+Shift+E)', { textAlign: 'center' })}
+      {btn('\u2261', () => setAlign('right'), isAlignActive('right'), 'Align right (Ctrl+Shift+R)', { textAlign: 'right' })}
+      {btn('\u2263', () => setAlign('justify'), isAlignActive('justify'), 'Justify (Ctrl+Shift+J)')}
 
       <span className={styles.sep} />
 

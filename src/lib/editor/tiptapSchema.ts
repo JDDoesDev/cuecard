@@ -8,6 +8,7 @@ import { Color } from '@tiptap/extension-color';
 import { Highlight } from '@tiptap/extension-highlight';
 import { TextAlign } from '@tiptap/extension-text-align';
 import { FontSize } from './fontSizeExtension';
+import { applyEditorTextAlign } from './editorTextAlign';
 
 /**
  * Get Tiptap editor extensions with FLDC-specific configuration.
@@ -42,7 +43,17 @@ export function getEditorExtensions(placeholderText = 'Start typing...') {
     FontSize,
 
     // Block formatting
-    TextAlign.configure({
+    // Shortcuts go through the same whole-element logic as the toolbar buttons
+    TextAlign.extend({
+      addKeyboardShortcuts() {
+        return {
+          'Mod-Shift-l': () => applyEditorTextAlign(this.editor, 'left'),
+          'Mod-Shift-e': () => applyEditorTextAlign(this.editor, 'center'),
+          'Mod-Shift-r': () => applyEditorTextAlign(this.editor, 'right'),
+          'Mod-Shift-j': () => applyEditorTextAlign(this.editor, 'justify'),
+        };
+      },
+    }).configure({
       types: ['heading', 'paragraph'],
     }),
 

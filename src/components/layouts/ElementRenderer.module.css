@@ -1,5 +1,17 @@
 /* Per-element-type styling for the universal renderer */
 
+/*
+ * Text-like elements always span the full element box. When vertical alignment
+ * makes the wrapper a flex container, a flex item would otherwise shrink to its
+ * content width and text-align (center/right) would have no visible effect.
+ */
+.heading,
+.text,
+.list {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .heading {
   font-family: var(--font-heading);
   font-weight: 700;

@@ -31,8 +31,9 @@ export function useElementSelection(slideIndex: number) {
     });
   }, []);
 
-  const selectAll = useCallback((ids: string[]) => {
-    setSelectedIds(new Set(ids));
+  /** Replace the selection with `ids`, or add them to it when `additive`. */
+  const selectAll = useCallback((ids: string[], additive = false) => {
+    setSelectedIds((prev) => (additive ? new Set([...prev, ...ids]) : new Set(ids)));
   }, []);
 
   const deselectAll = useCallback(() => {

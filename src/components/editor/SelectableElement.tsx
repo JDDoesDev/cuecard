@@ -13,10 +13,22 @@ interface SelectableElementProps {
   onContextMenu?: (id: string, x: number, y: number) => void;
   onPositionChange: (elementId: string, newPosition: any, disableSnap: boolean) => void;
   onResizeEnd: (elementId: string, newPosition: any) => void;
-  onResize?: (elementId: string, newPosition: any, disableSnap: boolean) => void;
+  onResize?: (elementId: string, newPosition: any, disableSnap: boolean, direction: ResizeDirection) => void;
+  onResizeStart?: (elementId: string) => void;
   onDragStart?: () => void;
   onDragEnd?: () => void;
   children: React.ReactNode;
+}
+
+/** Blur any focused input/editor and focus the (focusable) slide canvas. */
+function moveFocusToCanvas(slideContainer: Element) {
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && active !== document.body && !slideContainer.contains(active)) {
+    active.blur();
+  }
+  if (slideContainer instanceof HTMLElement && slideContainer.hasAttribute('tabindex')) {
+    slideContainer.focus({ preventScroll: true });
+  }
 }
 
 /**
@@ -32,6 +44,7 @@ export function SelectableElement({
   onPositionChange,
   onResizeEnd,
   onResize,
+  onResizeStart,
   onDragStart,
   onDragEnd,
   children,
@@ -95,6 +108,10 @@ export function SelectableElement({
       // Find the slide container
       const slideContainer = containerRef.current?.closest('[data-slide-container]');
       if (!slideContainer) return;
+
+      // preventDefault() above stops the browser from moving focus, so do it
+      // ourselves: otherwise Delete/Ctrl+C/V keep going to e.g. the notes textarea.
+      moveFocusToCanvas(slideContainer);
 
       const slideRect = slideContainer.getBoundingClientRect();
       const startX = e.clientX;
@@ -168,6 +185,7 @@ export function SelectableElement({
 
       const slideContainer = containerRef.current?.closest('[data-slide-container]');
       if (!slideContainer) return;
+      moveFocusToCanvas(slideContainer);
 
       const slideRect = slideContainer.getBoundingClientRect();
       const startX = e.clientX;
@@ -175,6 +193,7 @@ export function SelectableElement({
       const originalPosition = { ...element.position };
 
       setIsResizing(true);
+      onResizeStart?.(element.id);
       let lastPosition = originalPosition;
 
       const handleMouseMove = (moveEvent: MouseEvent) => {
@@ -189,7 +208,7 @@ export function SelectableElement({
 
         // Call onResize callback during resize to enable smart guides
         if (onResize) {
-          onResize(element.id, newPosition, moveEvent.altKey);
+          onResize(element.id, newPosition, moveEvent.altKey, direction);
         } else {
           onPositionChange(element.id, newPosition, true); // Fallback to position change
         }
@@ -207,7 +226,7 @@ export function SelectableElement({
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
     },
-    [element, onPositionChange, onResizeEnd]
+    [element, onPositionChange, onResize, onResizeStart, onResizeEnd]
   );
 
   return (

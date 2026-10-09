@@ -4,7 +4,8 @@ import { intersectsRect } from '@/lib/editor/resizeUtils';
 import styles from './SelectionRectangle.module.css';
 
 interface SelectionRectangleProps {
-  onSelectionComplete: (selectedIds: string[]) => void;
+  /** `additive` is true when Shift was held: add to the existing selection. */
+  onSelectionComplete: (selectedIds: string[], additive: boolean) => void;
   elements: SlideElement[];
   containerRef: RefObject<HTMLDivElement | null>;
 }
@@ -43,6 +44,13 @@ export function SelectionRectangle({
       if (e.button !== 0) return;
 
       e.preventDefault();
+      // preventDefault() blocks the native focus change; move focus to the canvas
+      // so keyboard shortcuts don't go to a previously focused input
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && active !== document.body && active !== container) {
+        active.blur();
+      }
+      if (container.hasAttribute('tabindex')) container.focus({ preventScroll: true });
 
       const containerRect = container.getBoundingClientRect();
       const startX = e.clientX - containerRect.left;
@@ -65,7 +73,7 @@ export function SelectionRectangle({
         setRect(latestRect);
       };
 
-      const handleMouseUp = () => {
+      const handleMouseUp = (upEvent: MouseEvent) => {
         isSelectingRef.current = false;
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
@@ -91,7 +99,16 @@ export function SelectionRectangle({
             .filter((el) => intersectsRect(el.position, rectInPercent))
             .map((el) => el.id);
 
-          onSelectionCompleteRef.current(selectedIds);
+          onSelectionCompleteRef.current(selectedIds, e.shiftKey || upEvent.shiftKey);
+
+          // The click that follows this mouseup would land on the canvas
+          // background and clear the selection we just made — swallow it.
+          const suppressClick = (clickEvent: MouseEvent) => {
+            clickEvent.stopPropagation();
+            clickEvent.preventDefault();
+          };
+          window.addEventListener('click', suppressClick, true);
+          setTimeout(() => window.removeEventListener('click', suppressClick, true), 0);
         }
 
         setRect(null);

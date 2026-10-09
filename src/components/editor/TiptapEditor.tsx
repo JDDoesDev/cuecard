@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { getEditorExtensions } from '@/lib/editor/tiptapSchema';
 import { EditorFormatToolbar } from './EditorFormatToolbar';
+import { flushPendingSave } from '@/lib/storage/autosave';
 
 export interface TiptapEditorProps {
   content: string; // HTML string
@@ -27,7 +28,7 @@ export function TiptapEditor({
   placeholder = 'Start typing...',
   className = '',
 }: TiptapEditorProps) {
-  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const updateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onUpdateRef = useRef(onUpdate);
   onUpdateRef.current = onUpdate;
 
@@ -38,6 +39,7 @@ export function TiptapEditor({
       }
 
       updateTimeoutRef.current = setTimeout(() => {
+        updateTimeoutRef.current = null;
         onUpdateRef.current(editor.getHTML());
       }, 300);
     },
@@ -80,10 +82,38 @@ export function TiptapEditor({
     }
   }, [editor, content, skipContentSync]);
 
+  // Flush a pending update when the page is hidden or closed
+  useEffect(() => {
+    if (!editor) return;
+    const flushNow = () => {
+      if (!updateTimeoutRef.current) return;
+      clearTimeout(updateTimeoutRef.current);
+      updateTimeoutRef.current = null;
+      if (!editor.isDestroyed) onUpdateRef.current(editor.getHTML());
+      // Autosave's own hide handler may already have run: write now
+      flushPendingSave();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flushNow();
+    };
+    window.addEventListener('pagehide', flushNow);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', flushNow);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [editor]);
+
   useEffect(() => {
     return () => {
+      // Flush (don't drop) a pending debounced update, e.g. when the user
+      // clicks "Back to canvas" right after typing or changing alignment
       if (updateTimeoutRef.current) {
         clearTimeout(updateTimeoutRef.current);
+        updateTimeoutRef.current = null;
+        if (editor && !editor.isDestroyed) {
+          onUpdateRef.current(editor.getHTML());
+        }
       }
       editor?.destroy();
     };

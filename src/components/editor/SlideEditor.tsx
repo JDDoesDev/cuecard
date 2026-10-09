@@ -1,7 +1,21 @@
 import { useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import { usePresentationStore } from '@/hooks/usePresentationStore';
+import {
+  presentationStore,
+  beginHistoryBatch,
+  endHistoryBatch,
+  coalesceHistory,
+} from '@/store/presentationStore';
 import { fldcToTiptap } from '@/lib/editor/fldcToTiptap';
 import { tiptapToFldc } from '@/lib/editor/tiptapToFldc';
+import {
+  getElementTextAlign,
+  getTextAlignState,
+  textAlignUpdates,
+  withElementTextAlign,
+  type TextAlignValue,
+} from '@/lib/editor/textAlign';
+import { textContentToLines, linesToTextContent } from '@/lib/editor/legacyTextContent';
 import { TiptapEditor } from './TiptapEditor';
 import { SelectableElement } from './SelectableElement';
 import { SelectionRectangle } from './SelectionRectangle';
@@ -9,10 +23,11 @@ import { AlignmentGuides } from './AlignmentGuides';
 import { AddElementToolbar } from './AddElementToolbar';
 import { GridOverlay } from './GridOverlay';
 import { ContextMenu } from './ContextMenu';
-import { computeSnap, type SnapLine } from '@/lib/editor/snapGuides';
+import { computeSnap, computeResizeSnap, type SnapLine } from '@/lib/editor/snapGuides';
+import type { ResizeDirection } from '@/lib/editor/resizeUtils';
 import { ElementRenderer } from '@/components/layouts/ElementRenderer';
 import { useElementSelection } from '@/hooks/useElementSelection';
-import type { SlideElement } from '@/types/slide';
+import type { SlideElement, ElementPosition } from '@/types/slide';
 import { getAvailableFonts } from '@/lib/fonts/availableFonts';
 import { useTheme } from '@/components/ThemeProvider/ThemeProvider';
 import SyntaxHighlighter from 'react-syntax-highlighter/dist/esm/light';
@@ -21,6 +36,47 @@ import styles from './SlideEditor.module.css';
 
 // Module-level clipboard — persists across slide navigation, ephemeral (no localStorage)
 let clipboard: SlideElement[] | null = null;
+
+const PASTE_OFFSET = 2; // percent
+const NUDGE_STEP = 1; // percent
+const NUDGE_STEP_LARGE = 5; // percent (with Shift)
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Fresh slide from the store (avoids stale closures in long-lived handlers). */
+function getFreshSlide(slideIndex: number) {
+  return presentationStore.getState().presentation?.slides[slideIndex];
+}
+
+/**
+ * Clamp a move delta so the bounding box of `positions` stays on the slide.
+ * Keeps the relative spacing of a multi-selection intact.
+ */
+function clampGroupDelta(positions: ElementPosition[], dx: number, dy: number) {
+  if (positions.length === 0) return { dx: 0, dy: 0 };
+  const minX = Math.min(...positions.map((p) => p.x));
+  const minY = Math.min(...positions.map((p) => p.y));
+  const maxX = Math.max(...positions.map((p) => p.x + p.width));
+  const maxY = Math.max(...positions.map((p) => p.y + p.height));
+  return {
+    dx: Math.max(-minX, Math.min(100 - maxX, dx)),
+    dy: Math.max(-minY, Math.min(100 - maxY, dy)),
+  };
+}
+
+/** Clone elements with new ids, offset so the copy is visible, kept on the slide. */
+function cloneElementsWithOffset(elements: SlideElement[]): SlideElement[] {
+  return elements.map((el) => {
+    const copy = structuredClone(el);
+    copy.id = crypto.randomUUID();
+    copy.position = {
+      ...copy.position,
+      x: Math.max(0, Math.min(copy.position.x + PASTE_OFFSET, 100 - copy.position.width)),
+      y: Math.max(0, Math.min(copy.position.y + PASTE_OFFSET, 100 - copy.position.height)),
+    };
+    return copy;
+  });
+}
 
 export interface SlideEditorProps {
   slideIndex: number;
@@ -74,55 +130,69 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
     return fldcToTiptap(slide, editingElementIndex);
   }, [slide, slideIndex, editingElementIndex]);
 
-  // Handle editor updates for the editing element
+  // Handle editor updates for the editing element. Reads the slide fresh from
+  // the store (this can run from an unmount flush) and locates the element by id.
   const handleEditorUpdate = useCallback(
     (html: string) => {
-      if (!slide || editingElementIndex === null) return;
+      if (!editingElementId) return;
+      const freshSlide = getFreshSlide(slideIndex);
+      if (!freshSlide) return;
+      const idx = freshSlide.elements.findIndex((el) => el.id === editingElementId);
+      if (idx === -1) return;
 
-      const updatedSlide = tiptapToFldc(html, slide, editingElementIndex);
-      lastSentSlideJsonRef.current = JSON.stringify(updatedSlide);
-      store.updateSlide(slideIndex, updatedSlide);
+      const updatedSlide = tiptapToFldc(html, freshSlide, idx);
+      const updatedJson = JSON.stringify(updatedSlide);
+      if (updatedJson === JSON.stringify(freshSlide)) return;
+      lastSentSlideJsonRef.current = updatedJson;
+      // Typing bursts become a single undo step
+      coalesceHistory(`rich:${editingElementId}`, () => store.updateSlide(slideIndex, updatedSlide), 2000);
     },
-    [slide, slideIndex, store, editingElementIndex]
+    [slideIndex, store, editingElementId]
   );
 
-  // Handle position change from drag or resize
+  /** Update an element from a typing-style input (coalesced into one undo step per burst). */
+  const typeUpdate = useCallback(
+    (elementId: string, field: string, updates: Partial<SlideElement>) => {
+      coalesceHistory(`${field}:${elementId}`, () => store.updateElement(slideIndex, elementId, updates));
+    },
+    [slideIndex, store]
+  );
+
+  // Handle position change from drag
   const handlePositionChange = useCallback(
-    (elementId: string, newPosition: any, disableSnap: boolean) => {
-      if (!slide) return;
+    (elementId: string, newPosition: ElementPosition, disableSnap: boolean) => {
+      const freshSlide = getFreshSlide(slideIndex);
+      if (!freshSlide) return;
 
       // Check if dragging a multi-selected element - move all selected elements
       if (selection.selectedIds.size > 1 && selection.isSelected(elementId)) {
-        const draggedElement = slide.elements.find((el) => el.id === elementId);
+        const draggedElement = freshSlide.elements.find((el) => el.id === elementId);
         if (!draggedElement) return;
 
-        // Calculate delta from the dragged element's original position
-        const deltaX = newPosition.x - draggedElement.position.x;
-        const deltaY = newPosition.y - draggedElement.position.y;
+        const group = freshSlide.elements.filter((el) => selection.selectedIds.has(el.id));
+        // Clamp the delta by the group's bounding box so spacing is preserved
+        const { dx, dy } = clampGroupDelta(
+          group.map((el) => el.position),
+          newPosition.x - draggedElement.position.x,
+          newPosition.y - draggedElement.position.y
+        );
+        if (dx === 0 && dy === 0) return;
 
-        // Apply delta to all selected elements
-        selection.selectedIds.forEach((id) => {
-          const element = slide.elements.find((el) => el.id === id);
-          if (!element) return;
-
-          const updatedPosition = {
-            ...element.position,
-            x: element.position.x + deltaX,
-            y: element.position.y + deltaY,
-          };
-
-          // Constrain to bounds
-          updatedPosition.x = Math.max(0, Math.min(100 - updatedPosition.width, updatedPosition.x));
-          updatedPosition.y = Math.max(0, Math.min(100 - updatedPosition.height, updatedPosition.y));
-
-          store.updateElement(slideIndex, id, { position: updatedPosition } as any);
-        });
+        store.updateElements(
+          slideIndex,
+          group.map((el) => ({
+            id: el.id,
+            updates: {
+              position: { ...el.position, x: round2(el.position.x + dx), y: round2(el.position.y + dy) },
+            },
+          }))
+        );
       } else {
         // Single element drag - apply snapping if not disabled
         let finalPosition = newPosition;
 
         if (!disableSnap) {
-          const siblings = slide.elements
+          const siblings = freshSlide.elements
             .filter((el) => el.id !== elementId)
             .map((el) => el.position);
 
@@ -143,35 +213,31 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
           setActiveGuides([]);
         }
 
-        store.updateElement(slideIndex, elementId, { position: finalPosition } as any);
+        store.updateElement(slideIndex, elementId, { position: finalPosition });
       }
     },
-    [slide, slideIndex, store, selection]
+    [slideIndex, store, selection]
   );
 
-  // Handle resize (during resize operation - for smart guides)
+  // Handle resize (during resize operation). Only the dragged edges snap.
   const handleResize = useCallback(
-    (elementId: string, newPosition: any, disableSnap: boolean) => {
-      if (!slide) return;
+    (elementId: string, newPosition: ElementPosition, disableSnap: boolean, direction: ResizeDirection) => {
+      const freshSlide = getFreshSlide(slideIndex);
+      if (!freshSlide) return;
 
-      // Apply snapping if not disabled
       let finalPosition = newPosition;
 
       if (!disableSnap) {
-        const siblings = slide.elements
+        const siblings = freshSlide.elements
           .filter((el) => el.id !== elementId)
           .map((el) => el.position);
 
-        const { snappedPosition, activeGuides: guides } = computeSnap(
-          { x: newPosition.x, y: newPosition.y },
-          { width: newPosition.width, height: newPosition.height },
-          siblings
-        );
-
+        const { snappedRect, activeGuides: guides } = computeResizeSnap(direction, newPosition, siblings);
         finalPosition = {
-          ...newPosition,
-          x: snappedPosition.x,
-          y: snappedPosition.y,
+          x: round2(snappedRect.x),
+          y: round2(snappedRect.y),
+          width: round2(snappedRect.width),
+          height: round2(snappedRect.height),
         };
 
         setActiveGuides(guides);
@@ -179,79 +245,140 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
         setActiveGuides([]);
       }
 
-      // Update position during resize
-      store.updateElement(slideIndex, elementId, { position: finalPosition } as any);
-    },
-    [slide, slideIndex, store]
-  );
-
-  // Handle resize end
-  const handleResizeEnd = useCallback(
-    (elementId: string, newPosition: any) => {
-      setActiveGuides([]);
-      store.updateElement(slideIndex, elementId, { position: newPosition } as any);
+      store.updateElement(slideIndex, elementId, { position: finalPosition });
     },
     [slideIndex, store]
   );
 
-  // Handle context menu
-  const handleContextMenu = useCallback((elementId: string, x: number, y: number) => {
-    setContextMenu({ x, y, elementId });
+  // Handle resize end. The (snapped) position was already committed by the
+  // last handleResize call, so don't overwrite it with the unsnapped one.
+  const handleResizeEnd = useCallback(() => {
+    setActiveGuides([]);
+    endHistoryBatch();
   }, []);
+
+  // ---------------------------------------------------------------------------
+  // Element operations (each is a single undo step)
+  // ---------------------------------------------------------------------------
+
+  const copyElements = useCallback(
+    (ids: Iterable<string>) => {
+      const freshSlide = getFreshSlide(slideIndex);
+      if (!freshSlide) return;
+      const idSet = new Set(ids);
+      const selected = freshSlide.elements.filter((el) => idSet.has(el.id));
+      if (selected.length > 0) {
+        clipboard = structuredClone(selected);
+      }
+    },
+    [slideIndex]
+  );
+
+  const deleteElements = useCallback(
+    (ids: Iterable<string>) => {
+      const list = [...ids];
+      if (list.length === 0) return;
+      store.deleteElements(slideIndex, list);
+      selection.deselectAll();
+    },
+    [slideIndex, store, selection]
+  );
+
+  const insertCopies = useCallback(
+    (source: SlideElement[]) => {
+      const copies = cloneElementsWithOffset(source);
+      if (copies.length === 0) return;
+      store.addElements(slideIndex, copies);
+      selection.selectAll(copies.map((el) => el.id));
+    },
+    [slideIndex, store, selection]
+  );
+
+  const pasteClipboard = useCallback(() => {
+    if (clipboard) insertCopies(clipboard);
+  }, [insertCopies]);
+
+  const duplicateElements = useCallback(
+    (ids: Iterable<string>) => {
+      const freshSlide = getFreshSlide(slideIndex);
+      if (!freshSlide) return;
+      const idSet = new Set(ids);
+      insertCopies(freshSlide.elements.filter((el) => idSet.has(el.id)));
+    },
+    [slideIndex, insertCopies]
+  );
+
+  const nudgeElements = useCallback(
+    (ids: Iterable<string>, dxIn: number, dyIn: number) => {
+      const freshSlide = getFreshSlide(slideIndex);
+      if (!freshSlide) return;
+      const idSet = new Set(ids);
+      const group = freshSlide.elements.filter((el) => idSet.has(el.id));
+      const { dx, dy } = clampGroupDelta(group.map((el) => el.position), dxIn, dyIn);
+      if (dx === 0 && dy === 0) return;
+      const key = `nudge:${group.map((el) => el.id).sort().join(',')}`;
+      coalesceHistory(key, () =>
+        store.updateElements(
+          slideIndex,
+          group.map((el) => ({
+            id: el.id,
+            updates: {
+              position: { ...el.position, x: round2(el.position.x + dx), y: round2(el.position.y + dy) },
+            },
+          }))
+        )
+      );
+    },
+    [slideIndex, store]
+  );
+
+  // Handle context menu: right-clicking an unselected element selects it, so
+  // every menu action targets the same set of elements.
+  const handleContextMenu = useCallback(
+    (elementId: string, x: number, y: number) => {
+      if (!selection.isSelected(elementId)) {
+        selection.select(elementId, false);
+      }
+      setContextMenu({ x, y, elementId });
+    },
+    [selection]
+  );
+
+  const contextTargetIds = useCallback((): string[] => {
+    if (!contextMenu) return [];
+    return selection.isSelected(contextMenu.elementId)
+      ? [...selection.selectedIds]
+      : [contextMenu.elementId];
+  }, [contextMenu, selection]);
 
   // Context menu actions
   const handleBringForward = useCallback(() => {
-    if (contextMenu) {
-      store.reorderElement(slideIndex, contextMenu.elementId, 'forward');
-    }
-  }, [contextMenu, slideIndex, store]);
+    store.reorderElements(slideIndex, contextTargetIds(), 'forward');
+  }, [contextTargetIds, slideIndex, store]);
 
   const handleSendBackward = useCallback(() => {
-    if (contextMenu) {
-      store.reorderElement(slideIndex, contextMenu.elementId, 'backward');
-    }
-  }, [contextMenu, slideIndex, store]);
+    store.reorderElements(slideIndex, contextTargetIds(), 'backward');
+  }, [contextTargetIds, slideIndex, store]);
 
   const handleBringToFront = useCallback(() => {
-    if (contextMenu) {
-      store.reorderElement(slideIndex, contextMenu.elementId, 'front');
-    }
-  }, [contextMenu, slideIndex, store]);
+    store.reorderElements(slideIndex, contextTargetIds(), 'front');
+  }, [contextTargetIds, slideIndex, store]);
 
   const handleSendToBack = useCallback(() => {
-    if (contextMenu) {
-      store.reorderElement(slideIndex, contextMenu.elementId, 'back');
-    }
-  }, [contextMenu, slideIndex, store]);
+    store.reorderElements(slideIndex, contextTargetIds(), 'back');
+  }, [contextTargetIds, slideIndex, store]);
 
   const handleCopy = useCallback(() => {
-    if (!slide) return;
-    const ids = selection.selectedIds.size > 0
-      ? selection.selectedIds
-      : contextMenu ? new Set([contextMenu.elementId]) : new Set<string>();
-    const selected = slide.elements.filter((el) => ids.has(el.id));
-    if (selected.length > 0) {
-      clipboard = structuredClone(selected);
-    }
-  }, [slide, selection, contextMenu]);
+    copyElements(contextTargetIds());
+  }, [copyElements, contextTargetIds]);
 
-  const handlePaste = useCallback(() => {
-    if (!clipboard) return;
-    const newIds: string[] = [];
-    for (const el of clipboard) {
-      const newId = crypto.randomUUID();
-      newIds.push(newId);
-      const newElement = structuredClone(el);
-      newElement.id = newId;
-      newElement.position = {
-        ...newElement.position,
-        x: Math.min(newElement.position.x + 2, 100 - newElement.position.width),
-        y: Math.min(newElement.position.y + 2, 100 - newElement.position.height),
-      };
-      store.addElement(slideIndex, newElement);
-    }
-    selection.selectAll(newIds);
-  }, [slideIndex, store, selection]);
+  const handleDelete = useCallback(() => {
+    deleteElements(contextTargetIds());
+  }, [deleteElements, contextTargetIds]);
+
+  const handleDuplicate = useCallback(() => {
+    duplicateElements(contextTargetIds());
+  }, [duplicateElements, contextTargetIds]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -263,84 +390,100 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
       const isNativeInput =
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
         target.isContentEditable;
 
       if (isNativeInput) return;
 
+      const mod = e.metaKey || e.ctrlKey;
+      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      const hasSelection = selection.selectedIds.size > 0;
+
       // Delete/Backspace: delete selected elements
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selection.selectedIds.size > 0) {
+      if ((key === 'Delete' || key === 'Backspace') && hasSelection) {
         e.preventDefault();
-        selection.selectedIds.forEach((id) => {
-          store.deleteElement(slideIndex, id);
-        });
+        deleteElements(selection.selectedIds);
+        return;
+      }
+
+      // Escape: deselect
+      if (key === 'Escape' && hasSelection) {
+        e.preventDefault();
         selection.deselectAll();
+        return;
       }
 
-      // [ key: move selected elements backward in z-order
-      if (e.key === '[' && !e.shiftKey && selection.selectedIds.size > 0) {
+      // [ / ]: move selected elements backward/forward in z-order
+      if (key === '[' && !e.shiftKey && !mod && hasSelection) {
         e.preventDefault();
-        selection.selectedIds.forEach((id) => {
-          store.reorderElement(slideIndex, id, 'backward');
-        });
+        store.reorderElements(slideIndex, [...selection.selectedIds], 'backward');
+        return;
+      }
+      if (key === ']' && !e.shiftKey && !mod && hasSelection) {
+        e.preventDefault();
+        store.reorderElements(slideIndex, [...selection.selectedIds], 'forward');
+        return;
       }
 
-      // ] key: move selected elements forward in z-order
-      if (e.key === ']' && !e.shiftKey && selection.selectedIds.size > 0) {
-        e.preventDefault();
-        selection.selectedIds.forEach((id) => {
-          store.reorderElement(slideIndex, id, 'forward');
-        });
-      }
-
-      // Cmd/Ctrl+C: copy selected elements
-      if ((e.metaKey || e.ctrlKey) && e.key === 'c' && selection.selectedIds.size > 0) {
-        e.preventDefault();
-        const selected = slide?.elements.filter((el) => selection.isSelected(el.id));
-        if (selected && selected.length > 0) {
-          clipboard = structuredClone(selected);
+      if (mod && !e.altKey) {
+        // Cmd/Ctrl+A: select all elements on the slide
+        if (key === 'a') {
+          e.preventDefault();
+          const freshSlide = getFreshSlide(slideIndex);
+          if (freshSlide) selection.selectAll(freshSlide.elements.map((el) => el.id));
+          return;
+        }
+        // Cmd/Ctrl+C: copy selected elements
+        if (key === 'c' && hasSelection) {
+          e.preventDefault();
+          copyElements(selection.selectedIds);
+          return;
+        }
+        // Cmd/Ctrl+X: cut selected elements
+        if (key === 'x' && hasSelection) {
+          e.preventDefault();
+          copyElements(selection.selectedIds);
+          deleteElements(selection.selectedIds);
+          return;
+        }
+        // Cmd/Ctrl+V: paste from clipboard
+        if (key === 'v' && clipboard) {
+          e.preventDefault();
+          pasteClipboard();
+          return;
+        }
+        // Cmd/Ctrl+D: duplicate selected elements
+        if (key === 'd' && hasSelection) {
+          e.preventDefault();
+          duplicateElements(selection.selectedIds);
+          return;
         }
       }
 
-      // Cmd/Ctrl+X: cut selected elements
-      if ((e.metaKey || e.ctrlKey) && e.key === 'x' && selection.selectedIds.size > 0) {
-        e.preventDefault();
-        const selected = slide?.elements.filter((el) => selection.isSelected(el.id));
-        if (selected && selected.length > 0) {
-          clipboard = structuredClone(selected);
-          selection.selectedIds.forEach((id) => {
-            store.deleteElement(slideIndex, id);
-          });
-          selection.deselectAll();
-        }
-      }
+      const arrows: Record<string, [number, number]> = {
+        ArrowLeft: [-1, 0],
+        ArrowRight: [1, 0],
+        ArrowUp: [0, -1],
+        ArrowDown: [0, 1],
+      };
 
-      // Cmd/Ctrl+V: paste from clipboard
-      if ((e.metaKey || e.ctrlKey) && e.key === 'v' && clipboard) {
+      // Arrow keys: nudge selected elements (Shift = larger step)
+      if (hasSelection && arrows[key] && !mod) {
         e.preventDefault();
-        const newIds: string[] = [];
-        for (const el of clipboard) {
-          const newId = crypto.randomUUID();
-          newIds.push(newId);
-          const newElement = structuredClone(el);
-          newElement.id = newId;
-          newElement.position = {
-            ...newElement.position,
-            x: Math.min(newElement.position.x + 2, 100 - newElement.position.width),
-            y: Math.min(newElement.position.y + 2, 100 - newElement.position.height),
-          };
-          store.addElement(slideIndex, newElement);
-        }
-        selection.selectAll(newIds);
+        const step = e.shiftKey ? NUDGE_STEP_LARGE : NUDGE_STEP;
+        const [ax, ay] = arrows[key];
+        nudgeElements(selection.selectedIds, ax * step, ay * step);
+        return;
       }
 
       // Arrow keys: navigate slides when nothing is selected
-      if (selection.selectedIds.size === 0 && store.presentation) {
+      if (!hasSelection && store.presentation) {
         const slideCount = store.presentation.slides.length;
-        if (e.key === 'ArrowLeft' && slideIndex > 0) {
+        if (key === 'ArrowLeft' && slideIndex > 0) {
           e.preventDefault();
           store.setCurrentSlide(slideIndex - 1);
         }
-        if (e.key === 'ArrowRight' && slideIndex < slideCount - 1) {
+        if (key === 'ArrowRight' && slideIndex < slideCount - 1) {
           e.preventDefault();
           store.setCurrentSlide(slideIndex + 1);
         }
@@ -351,7 +494,17 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [slideIndex, editingElementId, selection, store]);
+  }, [
+    slideIndex,
+    editingElementId,
+    selection,
+    store,
+    copyElements,
+    deleteElements,
+    pasteClipboard,
+    duplicateElements,
+    nudgeElements,
+  ]);
 
   if (!slide) {
     return (
@@ -407,9 +560,7 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
           <textarea
             value={editingElement.code}
             onChange={(e) => {
-              store.updateElement(slideIndex, editingElement.id, {
-                code: e.target.value,
-              } as any);
+              typeUpdate(editingElement.id, 'code', { code: e.target.value });
             }}
             placeholder="Enter code..."
             className={styles.codeTextarea}
@@ -454,9 +605,7 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
               <textarea
                 value={editingElement.htmlContent}
                 onChange={(e) => {
-                  store.updateElement(slideIndex, editingElement.id, {
-                    htmlContent: e.target.value,
-                  } as any);
+                  typeUpdate(editingElement.id, 'htmlContent', { htmlContent: e.target.value });
                 }}
                 placeholder="Enter HTML..."
                 className={styles.highlightedTextarea}
@@ -495,9 +644,7 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
                 type="text"
                 value={editingElement.url}
                 onChange={(e) => {
-                  store.updateElement(slideIndex, editingElement.id, {
-                    url: e.target.value,
-                  } as any);
+                  typeUpdate(editingElement.id, 'url', { url: e.target.value });
                 }}
                 className={styles.urlInput}
               />
@@ -527,9 +674,7 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
                 type="text"
                 value={editingElement.fill || ''}
                 onChange={(e) => {
-                  store.updateElement(slideIndex, editingElement.id, {
-                    fill: e.target.value || undefined,
-                  } as any);
+                  typeUpdate(editingElement.id, 'fill', { fill: e.target.value || undefined });
                 }}
                 placeholder="transparent"
                 className={styles.propertyInput}
@@ -541,9 +686,7 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
                 type="text"
                 value={editingElement.stroke || ''}
                 onChange={(e) => {
-                  store.updateElement(slideIndex, editingElement.id, {
-                    stroke: e.target.value || undefined,
-                  } as any);
+                  typeUpdate(editingElement.id, 'stroke', { stroke: e.target.value || undefined });
                 }}
                 placeholder="#333"
                 className={styles.propertyInput}
@@ -556,9 +699,7 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
                 value={editingElement.strokeWidth || ''}
                 onChange={(e) => {
                   const val = parseFloat(e.target.value);
-                  store.updateElement(slideIndex, editingElement.id, {
-                    strokeWidth: isNaN(val) ? undefined : val,
-                  } as any);
+                  typeUpdate(editingElement.id, 'strokeWidth', { strokeWidth: isNaN(val) ? undefined : val });
                 }}
                 placeholder="2"
                 className={styles.propertyInput}
@@ -571,9 +712,7 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
                 value={editingElement.cornerRadius || ''}
                 onChange={(e) => {
                   const val = parseFloat(e.target.value);
-                  store.updateElement(slideIndex, editingElement.id, {
-                    cornerRadius: isNaN(val) ? undefined : val,
-                  } as any);
+                  typeUpdate(editingElement.id, 'cornerRadius', { cornerRadius: isNaN(val) ? undefined : val });
                 }}
                 placeholder="0"
                 className={styles.propertyInput}
@@ -603,9 +742,7 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
                 type="text"
                 value={editingElement.fill || ''}
                 onChange={(e) => {
-                  store.updateElement(slideIndex, editingElement.id, {
-                    fill: e.target.value || undefined,
-                  } as any);
+                  typeUpdate(editingElement.id, 'fill', { fill: e.target.value || undefined });
                 }}
                 placeholder="transparent"
                 className={styles.propertyInput}
@@ -617,9 +754,7 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
                 type="text"
                 value={editingElement.stroke || ''}
                 onChange={(e) => {
-                  store.updateElement(slideIndex, editingElement.id, {
-                    stroke: e.target.value || undefined,
-                  } as any);
+                  typeUpdate(editingElement.id, 'stroke', { stroke: e.target.value || undefined });
                 }}
                 placeholder="#333"
                 className={styles.propertyInput}
@@ -632,9 +767,7 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
                 value={editingElement.strokeWidth || ''}
                 onChange={(e) => {
                   const val = parseFloat(e.target.value);
-                  store.updateElement(slideIndex, editingElement.id, {
-                    strokeWidth: isNaN(val) ? undefined : val,
-                  } as any);
+                  typeUpdate(editingElement.id, 'strokeWidth', { strokeWidth: isNaN(val) ? undefined : val });
                 }}
                 placeholder="2"
                 className={styles.propertyInput}
@@ -664,9 +797,7 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
                 type="text"
                 value={editingElement.stroke || ''}
                 onChange={(e) => {
-                  store.updateElement(slideIndex, editingElement.id, {
-                    stroke: e.target.value || undefined,
-                  } as any);
+                  typeUpdate(editingElement.id, 'stroke', { stroke: e.target.value || undefined });
                 }}
                 placeholder="#333"
                 className={styles.propertyInput}
@@ -679,9 +810,7 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
                 value={editingElement.strokeWidth || ''}
                 onChange={(e) => {
                   const val = parseFloat(e.target.value);
-                  store.updateElement(slideIndex, editingElement.id, {
-                    strokeWidth: isNaN(val) ? undefined : val,
-                  } as any);
+                  typeUpdate(editingElement.id, 'strokeWidth', { strokeWidth: isNaN(val) ? undefined : val });
                 }}
                 placeholder="2"
                 className={styles.propertyInput}
@@ -702,42 +831,49 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
       const oldEl = editingElement;
       let newElement: SlideElement;
 
-      // Extract text content from old element
-      const textContent = oldEl.type === 'list'
-        ? oldEl.items.join('\n')
-        : oldEl.content;
+      // Extract paragraphs (inline HTML) from the old element
+      const lines =
+        oldEl.type === 'list'
+          ? oldEl.items
+          : oldEl.type === 'text'
+            ? textContentToLines(oldEl.content)
+            : [oldEl.content];
+
+      // Properties shared by heading/text/list survive a type change
+      const common = {
+        id: oldEl.id,
+        position: oldEl.position,
+        ...(oldEl.fragment !== undefined && { fragment: oldEl.fragment }),
+        ...(oldEl.lineHeight !== undefined && { lineHeight: oldEl.lineHeight }),
+        ...(oldEl.fontFamily !== undefined && { fontFamily: oldEl.fontFamily }),
+        ...(oldEl.verticalAlign !== undefined && { verticalAlign: oldEl.verticalAlign }),
+      };
 
       if (newType === 'text') {
+        // Text content is rich HTML: one <p> per paragraph (a bare "\n" would be
+        // a markdown soft break and merge the lines)
         newElement = {
-          id: oldEl.id,
+          ...common,
           type: 'text',
-          position: oldEl.position,
-          content: textContent,
+          content: oldEl.type === 'text' ? oldEl.content : linesToTextContent(lines),
         };
       } else if (newType.startsWith('heading-')) {
         const level = parseInt(newType.split('-')[1], 10) as 1 | 2 | 3 | 4 | 5 | 6;
-        newElement = {
-          id: oldEl.id,
-          type: 'heading',
-          position: oldEl.position,
-          content: textContent,
-          level,
-        };
+        const content = oldEl.type === 'heading' ? oldEl.content : lines.filter(Boolean).join(' ');
+        newElement = { ...common, type: 'heading', content, level };
       } else if (newType === 'list') {
-        const items = textContent
-          .split('\n')
-          .map((s) => s.trim())
-          .filter(Boolean);
+        const items = lines.map((s) => s.trim()).filter(Boolean);
         newElement = {
-          id: oldEl.id,
+          ...common,
           type: 'list',
-          position: oldEl.position,
           items: items.length > 0 ? items : [''],
-          ordered: false,
+          ordered: oldEl.type === 'list' ? oldEl.ordered : false,
+          ...(oldEl.type === 'list' && oldEl.fragmentPerItem && { fragmentPerItem: true }),
         };
       } else {
         return;
       }
+      newElement = withElementTextAlign(newElement, getElementTextAlign(oldEl));
 
       // Replace element in slide
       const updatedElements = slide.elements.map((el) =>
@@ -796,10 +932,12 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
         <div
           ref={canvasRef}
           className={styles.slideCanvas}
+          tabIndex={-1}
           data-slide-container
           data-aspect={aspectRatio}
           data-theme={theme}
           style={{
+            outline: 'none',
             ...(store.presentation?.fontHeading ? { '--font-heading': `'${store.presentation.fontHeading}', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif` } as any : {}),
             ...(store.presentation?.fontBody ? { '--font-body': `'${store.presentation.fontBody}', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif` } as any : {}),
           }}
@@ -825,19 +963,19 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
               onContextMenu={handleContextMenu}
               onPositionChange={handlePositionChange}
               onResize={handleResize}
+              onResizeStart={beginHistoryBatch}
               onResizeEnd={handleResizeEnd}
-              onDragStart={() => {
-                // Could track dragging state here if needed
-              }}
+              onDragStart={beginHistoryBatch}
               onDragEnd={() => {
                 setActiveGuides([]);
+                endHistoryBatch();
               }}
             >
               <ElementRenderer element={element} />
             </SelectableElement>
           ))}
           <SelectionRectangle
-            onSelectionComplete={(ids) => selection.selectAll(ids)}
+            onSelectionComplete={(ids, additive) => selection.selectAll(ids, additive)}
             elements={slide.elements}
             containerRef={canvasRef}
           />
@@ -916,6 +1054,27 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
                     <option value="2.5">2.5</option>
                     <option value="3">3.0 (Loose)</option>
                   </select>
+                  <label className={styles.fragmentLabel}>Align:</label>
+                  <select
+                    value={getTextAlignState(selectedElement)}
+                    onChange={(e) => {
+                      store.updateElement(
+                        slideIndex,
+                        selectedId,
+                        textAlignUpdates(selectedElement, e.target.value as TextAlignValue)
+                      );
+                    }}
+                    className={styles.fragmentInput}
+                    title="Horizontal text alignment (whole element)"
+                  >
+                    {getTextAlignState(selectedElement) === 'mixed' && (
+                      <option value="mixed" disabled>Mixed</option>
+                    )}
+                    <option value="left">Left</option>
+                    <option value="center">Center</option>
+                    <option value="right">Right</option>
+                    <option value="justify">Justify</option>
+                  </select>
                   <label className={styles.fragmentLabel}>V-Align:</label>
                   <select
                     value={selectedElement.verticalAlign ?? 'top'}
@@ -942,9 +1101,7 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
                 value={selectedElement.fragment ?? 0}
                 onChange={(e) => {
                   const val = parseInt(e.target.value, 10);
-                  store.updateElement(slideIndex, selectedId, {
-                    fragment: val > 0 ? val : undefined,
-                  } as any);
+                  typeUpdate(selectedId, 'fragment', { fragment: val > 0 ? val : undefined });
                 }}
                 className={styles.fragmentInput}
                 title="0 = visible immediately, 1+ = appears on Nth click"
@@ -975,7 +1132,9 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
           onCopy={handleCopy}
-          onPaste={handlePaste}
+          onPaste={pasteClipboard}
+          onDuplicate={handleDuplicate}
+          onDelete={handleDelete}
           hasClipboard={clipboard !== null}
           onBringForward={handleBringForward}
           onSendBackward={handleSendBackward}

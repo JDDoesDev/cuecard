@@ -2,9 +2,19 @@ import type { ElementPosition } from '@/types/slide';
 
 export type ResizeDirection = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
+/** Minimum element width/height in percent. */
+export const MIN_ELEMENT_SIZE = 5;
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
 /**
  * Calculate new element position based on resize direction and delta.
  * All values are in percentage coordinates (0-100).
+ *
+ * Only the edges being dragged move; the opposite edges stay anchored. Moving
+ * edges are clamped to the slide (0–100) and to a minimum size, so dragging a
+ * w/n handle past the minimum doesn't make the element "walk", and the element
+ * can never be resized beyond the slide bounds.
  */
 export function calculateResize(
   direction: ResizeDirection,
@@ -12,66 +22,27 @@ export function calculateResize(
   deltaYPercent: number,
   original: ElementPosition
 ): ElementPosition {
-  let { x, y, width, height } = original;
+  let left = original.x;
+  let top = original.y;
+  let right = original.x + original.width;
+  let bottom = original.y + original.height;
 
-  switch (direction) {
-    case 'se': // Southeast: expand right and down
-      width += deltaXPercent;
-      height += deltaYPercent;
-      break;
+  const movesW = direction.includes('w');
+  const movesE = direction.includes('e');
+  const movesN = direction.includes('n');
+  const movesS = direction.includes('s');
 
-    case 'nw': // Northwest: expand left and up
-      x += deltaXPercent;
-      y += deltaYPercent;
-      width -= deltaXPercent;
-      height -= deltaYPercent;
-      break;
-
-    case 'ne': // Northeast: expand right and up
-      y += deltaYPercent;
-      width += deltaXPercent;
-      height -= deltaYPercent;
-      break;
-
-    case 'sw': // Southwest: expand left and down
-      x += deltaXPercent;
-      width -= deltaXPercent;
-      height += deltaYPercent;
-      break;
-
-    case 'n': // North: expand up
-      y += deltaYPercent;
-      height -= deltaYPercent;
-      break;
-
-    case 's': // South: expand down
-      height += deltaYPercent;
-      break;
-
-    case 'e': // East: expand right
-      width += deltaXPercent;
-      break;
-
-    case 'w': // West: expand left
-      x += deltaXPercent;
-      width -= deltaXPercent;
-      break;
-  }
-
-  // Clamp minimum width/height to 5% (prevent zero/negative)
-  width = Math.max(5, width);
-  height = Math.max(5, height);
-
-  // Clamp x/y to be >= 0
-  x = Math.max(0, x);
-  y = Math.max(0, y);
+  if (movesW) left = Math.max(0, Math.min(left + deltaXPercent, right - MIN_ELEMENT_SIZE));
+  if (movesE) right = Math.min(100, Math.max(right + deltaXPercent, left + MIN_ELEMENT_SIZE));
+  if (movesN) top = Math.max(0, Math.min(top + deltaYPercent, bottom - MIN_ELEMENT_SIZE));
+  if (movesS) bottom = Math.min(100, Math.max(bottom + deltaYPercent, top + MIN_ELEMENT_SIZE));
 
   // Round to 2 decimal places to prevent floating point drift
   return {
-    x: Math.round(x * 100) / 100,
-    y: Math.round(y * 100) / 100,
-    width: Math.round(width * 100) / 100,
-    height: Math.round(height * 100) / 100,
+    x: round2(left),
+    y: round2(top),
+    width: round2(right - left),
+    height: round2(bottom - top),
   };
 }
 

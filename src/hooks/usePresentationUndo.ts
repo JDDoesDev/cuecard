@@ -1,5 +1,17 @@
 import { useSyncExternalStore, useRef, useCallback } from 'react';
-import { presentationStore } from '@/store/presentationStore';
+import { presentationStore, resetHistoryCoalescing } from '@/store/presentationStore';
+
+// After undo/redo, the next edit must start a fresh history entry rather than
+// merge into a typing burst. (Slide index clamping happens in the store.)
+function undo() {
+  resetHistoryCoalescing();
+  presentationStore.temporal.getState().undo();
+}
+
+function redo() {
+  resetHistoryCoalescing();
+  presentationStore.temporal.getState().redo();
+}
 
 // ============================================================================
 // Undo/Redo Hook - Uses React's native useSyncExternalStore
@@ -31,8 +43,8 @@ export function usePresentationUndo(): UsePresentationUndoResult {
     }
 
     cachedRef.current = {
-      undo: state.undo,
-      redo: state.redo,
+      undo,
+      redo,
       canUndo,
       canRedo,
     };
