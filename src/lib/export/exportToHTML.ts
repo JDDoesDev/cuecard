@@ -1,562 +1,484 @@
+/**
+ * Standalone HTML export.
+ *
+ * Approach: every element is rendered with the app's real `ElementRenderer`
+ * via `react-dom/server` (so Tiptap HTML, markdown, tables, syntax
+ * highlighting, h1-h6, line-height/font-family/inline font sizes all match the
+ * app), then sanitized and wrapped in the same absolutely-positioned box that
+ * `UniversalSlide` produces. The app's live CSS (CSS modules with their hashed
+ * class names, global.css, alias variables) is harvested from
+ * `document.styleSheets` at export time; the selected theme is embedded from
+ * its source file; used fonts are embedded as data URIs. A small inline script
+ * handles navigation, fragments, deep links, fullscreen and speaker notes.
+ *
+ * `html` elements: rendered like the app, in a sandboxed srcdoc iframe
+ * (no scripts, opaque origin, so their CSS cannot restyle the deck). Theme
+ * variables are passed in and cqw sizes converted to iframe vw units so the
+ * content still scales with the slide.
+ */
+
+import { createElement } from 'react';
 import type { Presentation } from '@/types/presentation';
-import type { SlideElement } from '@/types/slide';
+import type { Slide, SlideElement } from '@/types/slide';
+import { ElementRenderer } from '@/components/layouts/ElementRenderer';
+import universalStyles from '@/components/layouts/UniversalSlide.module.css';
+import slideStyles from '@/components/Slide/Slide.module.css';
+import { computeTotalFragments } from '@/lib/fragments';
+import { embedImagesForExport } from '@/lib/media/imageRestore';
+import { escapeHtml, sanitizeHtml } from '@/lib/security/sanitize';
+import { getCustomThemeCss, isCustomThemeId } from '@/lib/theme/themeManager';
+import { buildHtmlSrcdoc } from '@/components/layouts/HtmlFrame';
+import {
+  buildEmbeddedFontCss,
+  collectDocumentCss,
+  googleFontsHref,
+  resolveImageSrc,
+  resolveVideoSrc,
+  type CollectedCss,
+} from './exportAssets';
+import { SLIDE_SCALE_CQW, buildNoScriptCss, buildRuntimeCss, buildRuntimeScript } from './exportRuntime';
+import {
+  aspectRatioDims,
+  parseYouTubeUrl,
+  safeColor,
+  safeFontName,
+  sanitizeFilename,
+  youTubeEmbedUrl,
+  type ExportAspectRatio,
+} from './exportUtils';
+
+export { sanitizeFilename, parseYouTubeUrl, isSafeColor } from './exportUtils';
+
+export interface ExportProgress {
+  stage: 'images' | 'fonts' | 'slides' | 'done';
+  done: number;
+  total: number;
+}
+
+export interface ExportHTMLOptions {
+  /** Theme id (built-in or `custom-<slug>`). Defaults to 'default'. */
+  theme?: string;
+  /** Overrides presentation.aspectRatio. */
+  aspectRatio?: ExportAspectRatio;
+  /** Fetch remote http(s) images and embed them as data URIs. Default false. */
+  embedRemoteImages?: boolean;
+  /** Pre-collected app CSS; omit to read document.styleSheets, null to skip. */
+  collectedCss?: CollectedCss | null;
+  onProgress?: (progress: ExportProgress) => void;
+}
+
+const themeSources = import.meta.glob('../../styles/themes/*.css', {
+  query: '?raw',
+  import: 'default',
+}) as Record<string, () => Promise<string>>;
+
+async function loadThemeSource(id: string): Promise<string | null> {
+  const key = Object.keys(themeSources).find((k) => k.endsWith(`/${id}.css`));
+  return key ? themeSources[key]() : null;
+}
 
 /**
- * Export a presentation to a self-contained HTML file.
- *
- * Generates a complete HTML document with:
- * - Inline CSS (theme variables, slide styles)
- * - Static HTML rendering of all slides
- * - JavaScript for keyboard navigation
- * - Fallback for no-JS environments
- *
- * Note: Uses CDN for fonts (requires internet). All other content is embedded.
+ * CSS for the chosen theme. Built-in: its source file (fallback: block
+ * harvested from live stylesheets). `custom-<slug>`: the installed custom
+ * theme rule. Unknown themes fall back to 'default'.
  */
-export function exportToHTML(presentation: Presentation, theme = 'default'): string {
-  const themeVars = getThemeVariables(theme);
-  const slidesHTML = presentation.slides
-    .map((slide, index) => renderSlideHTML(slide, index))
+async function resolveThemeCss(
+  theme: string,
+  collectedBlocks: Record<string, string> = {},
+): Promise<{ id: string; css: string }> {
+  const css = isCustomThemeId(theme)
+    ? getCustomThemeCss(theme) || collectedBlocks[theme] || ''
+    : (await loadThemeSource(theme))?.trim() || collectedBlocks[theme] || '';
+  if (css) return { id: theme, css };
+  return { id: 'default', css: (await loadThemeSource('default'))?.trim() || collectedBlocks.default || '' };
+}
+
+/** CSS custom properties declared in a CSS string (last one wins). */
+function parseCssVars(css: string): Record<string, string> {
+  const vars: Record<string, string> = {};
+  const re = /(--[\w-]+)\s*:\s*([^;{}]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(css))) vars[m[1]] = m[2].trim();
+  return vars;
+}
+
+function fontStackNames(stack: string): string[] {
+  return stack
+    .split(',')
+    .map((part) => part.replace(/["']/g, '').trim().toLowerCase())
+    .filter(Boolean);
+}
+
+/**
+ * Font families actually referenced: theme --font-* values, presentation
+ * fonts, per-element fontFamily and inline `font-family:` declarations.
+ */
+function collectUsedFamilies(themeCss: string, p: Presentation, slides: Slide[]): Set<string> {
+  const used = new Set<string>();
+  const add = (stack: string | undefined) => stack && fontStackNames(stack).forEach((f) => used.add(f));
+  for (const [k, v] of Object.entries(parseCssVars(themeCss))) if (k.startsWith('--font-') && !k.startsWith('--font-size')) add(v);
+  add(p.fontHeading);
+  add(p.fontBody);
+  const inline = (html: string) => {
+    const decoded = html.replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'");
+    const re = /font-family\s*:\s*([^;}>]+)/gi;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(decoded))) add(m[1]);
+  };
+  for (const slide of slides) {
+    for (const el of slide.elements ?? []) {
+      if ('fontFamily' in el) add(el.fontFamily);
+      if (el.type === 'heading' || el.type === 'text') inline(el.content);
+      else if (el.type === 'list') el.items.forEach(inline);
+      else if (el.type === 'html') inline(el.htmlContent);
+    }
+  }
+  return used;
+}
+
+/** Theme/font variables handed to sandboxed html-element iframes. */
+interface FrameContext {
+  vars: Record<string, string>;
+}
+
+/**
+ * Sandboxed srcdoc iframe for an `html` element (matches the app's HtmlFrame).
+ * Slide-relative cqw sizes are converted to the iframe's own vw units using
+ * the element's width share of the slide, so content scales with the deck.
+ */
+function htmlFrameMarkup(el: SlideElement & { type: 'html' }, ctx: FrameContext): string {
+  const share = Math.max(1, finite(el.position?.width, 100));
+  const vars: Record<string, string> = { ...ctx.vars };
+  for (const [k, cqw] of Object.entries(SLIDE_SCALE_CQW)) {
+    vars[k] = `${Math.round((cqw * 100 / share) * 1000) / 1000}vw`;
+  }
+  const srcdoc = buildHtmlSrcdoc(el.htmlContent, {
+    vars,
+    fontFamily: vars['--font-body'] ?? 'sans-serif',
+    color: vars['--color-text-primary'] ?? 'inherit',
+    fontSize: vars['--font-size-xl'],
+    lineHeight: '1.6',
+  });
+  return `<iframe sandbox="" srcdoc="${escapeHtml(srcdoc)}" title="Embedded HTML" ` +
+    'style="width:100%;height:100%;border:0;display:block;pointer-events:none;background:transparent"></iframe>';
+}
+
+/**
+ * Neutralize content attributes that could collide with the deck runtime:
+ * ids get an `xc-` prefix (in-page links/labels rewritten to match) and
+ * content-supplied data-fragment attributes are removed.
+ */
+function isolateContent(root: DocumentFragment): void {
+  root.querySelectorAll('[data-fragment]').forEach((n) => n.removeAttribute('data-fragment'));
+  root.querySelectorAll('[id]').forEach((n) => n.setAttribute('id', `xc-${n.getAttribute('id')}`));
+  root.querySelectorAll('[for]').forEach((n) => n.setAttribute('for', `xc-${n.getAttribute('for')}`));
+  root.querySelectorAll('a[href^="#"]').forEach((n) => {
+    const target = n.getAttribute('href')!.slice(1);
+    if (target) n.setAttribute('href', `#xc-${target}`);
+  });
+}
+
+function cls(...names: Array<string | undefined>): string {
+  return names.filter((n) => typeof n === 'string' && n).join(' ');
+}
+
+function styleAttr(decls: Record<string, string | number | undefined>): string {
+  return Object.entries(decls)
+    .filter(([, v]) => v !== undefined && v !== '')
+    .map(([k, v]) => `${k}:${v}`)
+    .join(';');
+}
+
+const finite = (n: unknown, fallback = 0): number =>
+  typeof n === 'number' && Number.isFinite(n) ? n : fallback;
+
+/** Clone an element with untrusted style-ish values normalized. */
+function prepareElement(el: SlideElement, imageSrc: string | undefined): SlideElement {
+  const copy = { ...el } as SlideElement;
+  if ('fontFamily' in copy) copy.fontFamily = safeFontName(copy.fontFamily);
+  switch (copy.type) {
+    case 'image':
+      return { ...copy, url: imageSrc || copy.url, cachedUrl: imageSrc || '' };
+    case 'rectangle':
+    case 'circle':
+      return {
+        ...copy,
+        fill: safeColor(copy.fill, 'transparent'),
+        stroke: safeColor(copy.stroke, '#333'),
+        strokeWidth: finite(copy.strokeWidth, 2),
+        ...(copy.type === 'rectangle' ? { cornerRadius: finite(copy.cornerRadius, 0) } : {}),
+      } as SlideElement;
+    case 'line':
+      return { ...copy, stroke: safeColor(copy.stroke, '#333'), strokeWidth: finite(copy.strokeWidth, 2) };
+    case 'html':
+      return { ...copy, htmlContent: '' }; // replaced by a sandboxed iframe after rendering
+    default:
+      return copy;
+  }
+}
+
+type RenderToStaticMarkup = (node: React.ReactNode) => string;
+
+function videoMarkup(src: string, ytEmbed: string | null): string {
+  if (ytEmbed) {
+    return `<iframe data-video src="${escapeHtml(ytEmbed)}" style="width:100%;height:100%;border:0" ` +
+      'allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" ' +
+      'referrerpolicy="strict-origin-when-cross-origin" allowfullscreen title="Embedded video"></iframe>';
+  }
+  return src
+    ? `<video src="${escapeHtml(src)}" controls playsinline preload="metadata" style="width:100%;height:100%;object-fit:contain"></video>`
+    : '';
+}
+
+/** Render one element's inner markup (sanitized, fragment-annotated). */
+function renderElementInner(
+  render: RenderToStaticMarkup,
+  el: SlideElement,
+  media: { image?: string; video?: string },
+  ctx: FrameContext,
+): string {
+  const tpl = document.createElement('template');
+
+  if (el.type === 'video') {
+    const yt = parseYouTubeUrl(el.url);
+    tpl.innerHTML = videoMarkup(media.video ?? '', yt ? youTubeEmbedUrl(yt) : null);
+    return tpl.innerHTML;
+  }
+
+  let markup: string;
+  try {
+    markup = render(createElement(ElementRenderer, { element: prepareElement(el, media.image), staticExport: true }));
+  } catch {
+    // Defensive fallback if the live renderer ever needs app context
+    const text = 'content' in el ? el.content : el.type === 'list' ? el.items.join('\n') : el.type === 'code' ? el.code : '';
+    markup = `<div style="white-space:pre-wrap">${escapeHtml(text)}</div>`;
+  }
+
+  switch (el.type) {
+    case 'heading':
+    case 'text':
+    case 'list':
+      tpl.innerHTML = sanitizeHtml(markup);
+      break;
+    case 'html': {
+      tpl.innerHTML = markup;
+      const box = tpl.content.firstElementChild;
+      if (box) box.innerHTML = htmlFrameMarkup(el, ctx);
+      else tpl.innerHTML = htmlFrameMarkup(el, ctx);
+      break;
+    }
+    case 'image': {
+      tpl.innerHTML = markup;
+      const img = tpl.content.querySelector('img');
+      if (img) {
+        if (media.image) img.setAttribute('src', media.image);
+        else img.removeAttribute('src');
+        img.setAttribute('alt', el.alt || '');
+        img.setAttribute('decoding', 'async');
+      }
+      break;
+    }
+    default:
+      tpl.innerHTML = markup;
+  }
+
+  isolateContent(tpl.content);
+
+  if (el.type === 'list' && el.fragment != null && el.fragmentPerItem && el.items.length) {
+    // Top-level items only, clamped to items.length (as computeTotalFragments)
+    const listRoot = tpl.content.querySelector('ul,ol');
+    const last = el.items.length - 1;
+    if (listRoot) {
+      Array.from(listRoot.children)
+        .filter((li) => li.tagName === 'LI')
+        .forEach((li, j) => li.setAttribute('data-fragment', String(el.fragment! + Math.min(j, last))));
+    }
+  }
+  return tpl.innerHTML;
+}
+
+function renderElementBox(
+  render: RenderToStaticMarkup,
+  el: SlideElement,
+  idx: number,
+  media: { image?: string; video?: string },
+  ctx: FrameContext,
+): string {
+  const pos = el.position ?? { x: 0, y: 0, width: 100, height: 100 };
+  const isText = el.type === 'heading' || el.type === 'text' || el.type === 'list';
+  const vAlign = isText ? el.verticalAlign : undefined;
+  const style = styleAttr({
+    left: `${finite(pos.x)}%`,
+    top: `${finite(pos.y)}%`,
+    width: `${finite(pos.width, 100)}%`,
+    [isText ? 'min-height' : 'height']: `${finite(pos.height, 100)}%`,
+    'z-index': idx,
+    overflow: isText ? 'visible' : 'hidden',
+    ...(vAlign === 'middle' || vAlign === 'bottom'
+      ? { display: 'flex', 'align-items': vAlign === 'middle' ? 'center' : 'flex-end' }
+      : vAlign === 'top' ? { display: 'flex' } : {}),
+  });
+  const fragAttr = el.fragment != null && Number.isFinite(el.fragment) ? ` data-fragment="${Math.floor(el.fragment)}"` : '';
+  return `<div class="${escapeHtml(cls('xel', universalStyles?.element, universalStyles?.fragmentReveal))}" ` +
+    `data-element-type="${escapeHtml(el.type)}"${fragAttr} style="${escapeHtml(style)}">` +
+    renderElementInner(render, el, media, ctx) +
+    '</div>';
+}
+
+function slideFontStyle(p: Presentation): string {
+  const heading = safeFontName(p.fontHeading);
+  const body = safeFontName(p.fontBody);
+  return styleAttr({
+    '--font-heading': heading ? `'${heading}', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif` : undefined,
+    '--font-body': body ? `'${body}', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif` : undefined,
+  });
+}
+
+function safeStyleText(css: string): string {
+  return css.replace(/<\/(style)/gi, '<\\/$1');
+}
+
+/**
+ * Export a presentation to a single self-contained HTML document.
+ * Accepts a theme id string for backwards compatibility.
+ */
+export async function exportToHTML(
+  presentation: Presentation,
+  optionsOrTheme: ExportHTMLOptions | string = {},
+): Promise<string> {
+  const options: ExportHTMLOptions =
+    typeof optionsOrTheme === 'string' ? { theme: optionsOrTheme } : optionsOrTheme;
+  const requestedTheme = options.theme && /^[\w-]+$/.test(options.theme) ? options.theme : 'default';
+  const ratio = aspectRatioDims(options.aspectRatio ?? presentation.aspectRatio);
+  const progress = options.onProgress ?? (() => {});
+  // Inline uploaded (IndexedDB) images into `url`; drops session blob: cachedUrls
+  const source = await embedImagesForExport(presentation);
+  const slides: Slide[] = source.slides ?? [];
+
+  // ---- media ----
+  const images = slides.flatMap((s) => s.elements.filter((e) => e.type === 'image'));
+  const videos = slides.flatMap((s) => s.elements.filter((e) => e.type === 'video'));
+  const imageSrc = new Map<string, string>();
+  const videoSrc = new Map<string, string>();
+  let done = 0;
+  const mediaTotal = images.length + videos.length;
+  progress({ stage: 'images', done, total: mediaTotal });
+  await Promise.all([
+    ...images.map(async (el) => {
+      imageSrc.set(el.id, await resolveImageSrc(el, !!options.embedRemoteImages));
+      progress({ stage: 'images', done: ++done, total: mediaTotal });
+    }),
+    ...videos.map(async (el) => {
+      videoSrc.set(el.id, parseYouTubeUrl(el.url) ? '' : resolveVideoSrc(el.url));
+      progress({ stage: 'images', done: ++done, total: mediaTotal });
+    }),
+  ]);
+
+  // ---- CSS & fonts ----
+  progress({ stage: 'fonts', done: 0, total: 1 });
+  const collected =
+    options.collectedCss === undefined
+      ? (typeof document !== 'undefined' ? collectDocumentCss(document) : null)
+      : options.collectedCss;
+  const { id: theme, css: themeCss } = await resolveThemeCss(requestedTheme, collected?.themeBlocks);
+  const slidesJson = JSON.stringify(slides);
+  const fonts = collected
+    ? await buildEmbeddedFontCss(
+        collected.fontFaces,
+        collectUsedFamilies(themeCss, presentation, slides),
+        `${presentation.title ?? ''}${slidesJson}`,
+      )
+    : { css: '', failed: [] as string[] };
+  const fontLinks = new Set<string>(collected?.links ?? []);
+  for (const fam of fonts.failed) fontLinks.add(googleFontsHref(fam));
+  progress({ stage: 'fonts', done: 1, total: 1 });
+
+  // ---- slides ----
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const fontStyle = slideFontStyle(presentation);
+  const frameCtx: FrameContext = { vars: { ...parseCssVars(themeCss), ...parseCssVars(fontStyle) } };
+  const token = `xdeck-${Math.random().toString(36).slice(2, 10)}`;
+  const slideHtml = slides.map((slide, i) => {
+    const elements = slide.elements ?? [];
+    const inner = elements.length
+      ? elements.map((el, idx) =>
+          renderElementBox(renderToStaticMarkup, el, idx, { image: imageSrc.get(el.id), video: videoSrc.get(el.id) }, frameCtx),
+        ).join('')
+      : `<div class="${escapeHtml(cls('xempty', universalStyles?.emptyState))}">Empty Slide</div>`;
+    progress({ stage: 'slides', done: i + 1, total: slides.length });
+    return `<section class="${escapeHtml(cls('xslide', slideStyles?.slide, i === 0 ? 'active' : undefined))}" ` +
+      `data-theme="${escapeHtml(theme)}" data-slide-container data-index="${i}" ` +
+      `aria-roledescription="slide" aria-label="Slide ${i + 1} of ${slides.length}"` +
+      (fontStyle ? ` style="${escapeHtml(fontStyle)}"` : '') + '>' +
+      `<div class="${escapeHtml(cls('xcontainer', universalStyles?.container))}">${inner}</div></section>`;
+  });
+
+  const deckData = JSON.stringify({
+    fragments: slides.map((s) => computeTotalFragments(s)),
+    notes: slides.map((s) => (typeof s.notes === 'string' ? s.notes : '')),
+  }).replace(/</g, '\\u003c');
+
+  const title = escapeHtml(presentation.title || 'Presentation');
+  const links = Array.from(fontLinks)
+    .map((href) => `<link rel="stylesheet" href="${escapeHtml(href)}">`)
     .join('\n');
 
+  progress({ stage: 'done', done: slides.length, total: slides.length });
+
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="${escapeHtml(theme)}">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHTML(presentation.title)}</title>
-
-  <!-- Google Fonts CDN (requires internet) -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Roboto:wght@400;700&family=Fira+Code:wght@400;700&family=Playfair+Display:wght@400;700&family=Source+Sans+3:wght@400;700&display=swap" rel="stylesheet">
-
-  <style>
-    /* Theme Variables */
-    ${themeVars}
-
-    /* Base Styles */
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: var(--font-body);
-      background: #000;
-      color: var(--color-text-primary);
-      overflow: hidden;
-    }
-
-    /* Slide Container — letterboxed to 16:9 so it fills whatever screen it is
-       shown on without distorting element positions */
-    .presentation {
-      position: absolute;
-      inset: 0;
-      margin: auto;
-      width: min(100vw, calc(100vh * 16 / 9));
-      height: min(100vh, calc(100vw * 9 / 16));
-      overflow: hidden;
-    }
-
-    .slide {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      display: none;
-      background: var(--color-bg-primary);
-      color: var(--color-text-primary);
-
-      /* Type and spacing scale with the slide width (1000px ≈ nominal px),
-         matching the in-app [data-slide-container] rules */
-      container-type: inline-size;
-      --font-size-xs: 1.6cqw;
-      --font-size-sm: 1.8cqw;
-      --font-size-base: 2cqw;
-      --font-size-lg: 2.2cqw;
-      --font-size-xl: 2.6cqw;
-      --font-size-2xl: 3cqw;
-      --font-size-3xl: 3.6cqw;
-      --font-size-4xl: 4.2cqw;
-      --font-size-5xl: 5.4cqw;
-      --space-xs: 0.4cqw;
-      --space-sm: 0.8cqw;
-      --space-md: 1.6cqw;
-      --space-lg: 2.4cqw;
-      --space-xl: 3.2cqw;
-      --space-2xl: 4.8cqw;
-      --space-3xl: 6.4cqw;
-    }
-
-    .slide.active {
-      display: block;
-    }
-
-    /* Element Positioning */
-    .element {
-      position: absolute;
-      box-sizing: border-box;
-      overflow: hidden;
-    }
-
-    /* Element Styles */
-    .heading {
-      font-family: var(--font-heading);
-      font-weight: 700;
-      margin: 0;
-      color: var(--color-text-primary);
-      line-height: 1.2;
-    }
-
-    .heading[data-level='1'] {
-      font-size: var(--font-size-5xl);
-    }
-
-    .heading[data-level='2'] {
-      font-size: var(--font-size-3xl);
-      font-weight: 600;
-    }
-
-    .heading[data-level='3'] {
-      font-size: var(--font-size-2xl);
-      font-weight: 600;
-    }
-
-    .text {
-      font-family: var(--font-body);
-      font-size: var(--font-size-xl);
-      color: var(--color-text-primary);
-      white-space: pre-wrap;
-      line-height: 1.6;
-      margin: 0;
-    }
-
-    .list {
-      font-family: var(--font-body);
-      font-size: var(--font-size-xl);
-      color: var(--color-text-primary);
-      line-height: 1.8;
-      margin: 0;
-      padding-left: var(--space-xl);
-    }
-
-    .list li {
-      margin-bottom: var(--space-xs);
-    }
-
-    .code-container {
-      width: 100%;
-      height: 100%;
-      overflow: auto;
-      border-radius: var(--radius-md);
-      background: var(--color-code-bg);
-      padding: var(--space-md);
-    }
-
-    .code {
-      font-family: var(--font-code);
-      font-size: var(--font-size-base);
-      color: var(--color-code-text);
-      white-space: pre;
-      line-height: 1.5;
-    }
-
-    .image {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-    }
-
-    .image[data-fit='cover'] {
-      object-fit: cover;
-    }
-
-    .video {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-      border: none;
-    }
-
-    /* Navigation UI */
-    .nav-controls {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      background: rgba(0, 0, 0, 0.7);
-      color: white;
-      padding: 10px 16px;
-      border-radius: 8px;
-      font-family: var(--font-body);
-      font-size: 14px;
-      z-index: 1000;
-    }
-
-    /* No-JS Fallback */
-    .no-js-warning {
-      display: none;
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: #fff;
-      color: #000;
-      padding: 2rem;
-      border-radius: 8px;
-      text-align: center;
-      z-index: 2000;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="generator" content="slide-framework HTML export">
+<title>${title}</title>
+${links}
+<style id="xdeck-app-css">
+${safeStyleText(collected?.css ?? '')}
+</style>
+<style id="xdeck-theme">
+${safeStyleText(themeCss)}
+</style>
+<style id="xdeck-fonts">
+${safeStyleText(fonts.css)}
+</style>
+<style id="xdeck-runtime">
+${buildRuntimeCss(ratio)}
+</style>
+<noscript><style>${buildNoScriptCss(ratio)}</style></noscript>
 </head>
-<body data-theme="${theme}">
-  <noscript>
-    <div class="no-js-warning">
-      <h2>JavaScript Required</h2>
-      <p>This presentation requires JavaScript for navigation.</p>
-      <p>Please enable JavaScript to view the slides.</p>
-    </div>
-  </noscript>
-
-  <div class="presentation">
-${slidesHTML}
-  </div>
-
-  <div class="nav-controls">
-    <span id="slide-counter">1 / ${presentation.slides.length}</span>
-  </div>
-
-  <script>
-    // Presentation Navigation
-    let currentSlide = 0;
-    const slides = document.querySelectorAll('.slide');
-    const totalSlides = slides.length;
-    const counter = document.getElementById('slide-counter');
-
-    function showSlide(index) {
-      // Clamp index
-      if (index < 0) index = 0;
-      if (index >= totalSlides) index = totalSlides - 1;
-
-      // Hide all slides
-      slides.forEach(slide => slide.classList.remove('active'));
-
-      // Show current slide
-      if (slides[index]) {
-        slides[index].classList.add('active');
-        currentSlide = index;
-        counter.textContent = (currentSlide + 1) + ' / ' + totalSlides;
-      }
-    }
-
-    // Keyboard navigation
-    document.addEventListener('keydown', (e) => {
-      switch (e.key) {
-        case 'ArrowRight':
-        case 'ArrowDown':
-        case ' ':
-        case 'PageDown':
-          e.preventDefault();
-          showSlide(currentSlide + 1);
-          break;
-        case 'ArrowLeft':
-        case 'ArrowUp':
-        case 'PageUp':
-          e.preventDefault();
-          showSlide(currentSlide - 1);
-          break;
-        case 'Home':
-          e.preventDefault();
-          showSlide(0);
-          break;
-        case 'End':
-          e.preventDefault();
-          showSlide(totalSlides - 1);
-          break;
-      }
-    });
-
-    // Mouse click navigation
-    document.addEventListener('click', (e) => {
-      const x = e.clientX;
-      const width = window.innerWidth;
-
-      // Click left half to go back, right half to go forward
-      if (x < width / 2) {
-        showSlide(currentSlide - 1);
-      } else {
-        showSlide(currentSlide + 1);
-      }
-    });
-
-    // Initialize
-    showSlide(0);
-  </script>
+<body class="xdeck" data-aspect-ratio="${ratio.w}:${ratio.h}">
+<main class="xstage" id="${token}-stage" aria-label="${title}">
+${slideHtml.join('\n')}
+</main>
+<div class="xui" aria-live="polite"><span id="${token}-counter">${slides.length ? 1 : 0} / ${slides.length}</span></div>
+<div class="xnotes" id="${token}-notes" aria-label="Speaker notes"></div>
+<script type="application/json" id="${token}-data">${deckData}</script>
+<script>${buildRuntimeScript(token)}</script>
 </body>
 </html>`;
 }
 
 /**
- * Render a single slide as HTML.
+ * Export to HTML and trigger a browser download. The object URL is revoked
+ * after a delay so the download has time to start.
  */
-function renderSlideHTML(slide: any, index: number): string {
-  const elementsHTML = slide.elements
-    .map((element: SlideElement, idx: number) => renderElementHTML(element, idx))
-    .join('\n      ');
-
-  return `    <div class="slide" data-slide-index="${index}">
-${elementsHTML || '      <div class="element" style="left: 50%; top: 50%; transform: translate(-50%, -50%); color: var(--color-text-secondary); font-style: italic;">Empty Slide</div>'}
-    </div>`;
-}
-
-/**
- * Render a single element as HTML.
- */
-function renderElementHTML(element: SlideElement, zIndex: number): string {
-  const { position } = element;
-  const style = `left: ${position.x}%; top: ${position.y}%; width: ${position.width}%; height: ${position.height}%; z-index: ${zIndex};`;
-
-  let content = '';
-
-  switch (element.type) {
-    case 'heading':
-      content = `<h${element.level} class="heading" data-level="${element.level}">${escapeHTML(element.content)}</h${element.level}>`;
-      break;
-
-    case 'text':
-      content = `<p class="text">${escapeHTML(element.content)}</p>`;
-      break;
-
-    case 'list':
-      const tag = element.ordered ? 'ol' : 'ul';
-      const items = element.items.map(item => `<li>${escapeHTML(item)}</li>`).join('');
-      content = `<${tag} class="list">${items}</${tag}>`;
-      break;
-
-    case 'code':
-      content = `<div class="code-container"><pre class="code">${escapeHTML(element.code)}</pre></div>`;
-      break;
-
-    case 'image':
-      const fit = element.objectFit || 'contain';
-      content = `<img class="image" src="${escapeHTML(element.url)}" alt="${escapeHTML(element.alt || '')}" data-fit="${fit}" />`;
-      break;
-
-    case 'video':
-      if (element.url.includes('youtube.com') || element.url.includes('youtu.be')) {
-        const videoId = extractYouTubeId(element.url);
-        content = `<iframe class="video" src="https://www.youtube.com/embed/${videoId}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
-      } else {
-        content = `<video class="video" src="${escapeHTML(element.url)}" controls></video>`;
-      }
-      break;
-
-    case 'rectangle':
-      const rectFill = element.fill || 'transparent';
-      const rectStroke = element.stroke || '#333';
-      const rectStrokeWidth = element.strokeWidth || 2;
-      const rectRadius = element.cornerRadius || 0;
-      content = `<svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-        <rect width="100%" height="100%" fill="${rectFill}" stroke="${rectStroke}" stroke-width="${rectStrokeWidth}" rx="${rectRadius}" />
-      </svg>`;
-      break;
-
-    case 'circle':
-      const circleFill = element.fill || 'transparent';
-      const circleStroke = element.stroke || '#333';
-      const circleStrokeWidth = element.strokeWidth || 2;
-      content = `<svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-        <ellipse cx="50%" cy="50%" rx="50%" ry="50%" fill="${circleFill}" stroke="${circleStroke}" stroke-width="${circleStrokeWidth}" />
-      </svg>`;
-      break;
-
-    case 'line':
-      const lineStroke = element.stroke || '#333';
-      const lineStrokeWidth = element.strokeWidth || 2;
-      content = `<svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
-        <line x1="0" y1="50%" x2="100%" y2="50%" stroke="${lineStroke}" stroke-width="${lineStrokeWidth}" />
-      </svg>`;
-      break;
-
-    default:
-      content = `<div>Unknown element type</div>`;
-  }
-
-  return `      <div class="element" style="${style}">
-        ${content}
-      </div>`;
-}
-
-/**
- * Get theme CSS variables as a string.
- */
-function getThemeVariables(theme: string): string {
-  const themes: Record<string, string> = {
-    default: `
-      --color-bg-primary: #ffffff;
-      --color-bg-secondary: #f8f9fa;
-      --color-bg-tertiary: #e9ecef;
-      --color-text-primary: #1a1a2e;
-      --color-text-secondary: #4a4a6a;
-      --color-text-tertiary: #6c757d;
-      --color-accent: #0066cc;
-      --color-accent-hover: #0052a3;
-      --color-accent-light: #e6f0ff;
-      --color-code-bg: #1e1e2e;
-      --color-code-text: #cdd6f4;
-      --color-border: #dee2e6;
-      --color-border-light: #f1f3f5;
-      --font-heading: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      --font-body: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      --font-code: 'Fira Code', 'Courier New', monospace;
-      --font-size-xs: 0.75rem;
-      --font-size-sm: 0.875rem;
-      --font-size-base: 1rem;
-      --font-size-lg: 1.125rem;
-      --font-size-xl: 1.25rem;
-      --font-size-2xl: 1.5rem;
-      --font-size-3xl: 1.875rem;
-      --font-size-4xl: 2.25rem;
-      --font-size-5xl: 3rem;
-      --space-xs: 0.25rem;
-      --space-sm: 0.5rem;
-      --space-md: 1rem;
-      --space-lg: 1.5rem;
-      --space-xl: 2rem;
-      --space-2xl: 3rem;
-      --space-3xl: 4rem;
-      --radius-sm: 0.25rem;
-      --radius-md: 0.5rem;
-      --radius-lg: 0.75rem;
-      --radius-xl: 1rem;
-    `,
-    dark: `
-      --color-bg-primary: #1a1a2e;
-      --color-bg-secondary: #16213e;
-      --color-bg-tertiary: #0f3460;
-      --color-text-primary: #f8f9fa;
-      --color-text-secondary: #e9ecef;
-      --color-text-tertiary: #ced4da;
-      --color-accent: #4d9fff;
-      --color-accent-hover: #3d8fe6;
-      --color-accent-light: #1a4d7a;
-      --color-code-bg: #0d1117;
-      --color-code-text: #c9d1d9;
-      --color-border: #30363d;
-      --color-border-light: #21262d;
-      --font-heading: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      --font-body: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      --font-code: 'Fira Code', 'Courier New', monospace;
-      --font-size-xs: 0.75rem;
-      --font-size-sm: 0.875rem;
-      --font-size-base: 1rem;
-      --font-size-lg: 1.125rem;
-      --font-size-xl: 1.25rem;
-      --font-size-2xl: 1.5rem;
-      --font-size-3xl: 1.875rem;
-      --font-size-4xl: 2.25rem;
-      --font-size-5xl: 3rem;
-      --space-xs: 0.25rem;
-      --space-sm: 0.5rem;
-      --space-md: 1rem;
-      --space-lg: 1.5rem;
-      --space-xl: 2rem;
-      --space-2xl: 3rem;
-      --space-3xl: 4rem;
-      --radius-sm: 0.25rem;
-      --radius-md: 0.5rem;
-      --radius-lg: 0.75rem;
-      --radius-xl: 1rem;
-    `,
-    light: `
-      --color-bg-primary: #fffef9;
-      --color-bg-secondary: #faf8f3;
-      --color-bg-tertiary: #f5f2ea;
-      --color-text-primary: #2c2416;
-      --color-text-secondary: #5a4d3a;
-      --color-text-tertiary: #8b7d6b;
-      --color-accent: #d4751e;
-      --color-accent-hover: #b85f0f;
-      --color-accent-light: #fef3e9;
-      --color-code-bg: #2c2416;
-      --color-code-text: #f5f2ea;
-      --color-border: #e5e0d5;
-      --color-border-light: #f0ebe0;
-      --font-heading: 'Playfair Display', Georgia, serif;
-      --font-body: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      --font-code: 'Fira Code', 'Courier New', monospace;
-      --font-size-xs: 0.75rem;
-      --font-size-sm: 0.875rem;
-      --font-size-base: 1rem;
-      --font-size-lg: 1.125rem;
-      --font-size-xl: 1.25rem;
-      --font-size-2xl: 1.5rem;
-      --font-size-3xl: 1.875rem;
-      --font-size-4xl: 2.25rem;
-      --font-size-5xl: 3rem;
-      --space-xs: 0.25rem;
-      --space-sm: 0.5rem;
-      --space-md: 1rem;
-      --space-lg: 1.5rem;
-      --space-xl: 2rem;
-      --space-2xl: 3rem;
-      --space-3xl: 4rem;
-      --radius-sm: 0.25rem;
-      --radius-md: 0.5rem;
-      --radius-lg: 0.75rem;
-      --radius-xl: 1rem;
-    `,
-  };
-
-  return `
-    :root {
-      ${themes[theme] || themes.default}
-    }
-  `;
-}
-
-/**
- * Escape HTML special characters.
- */
-function escapeHTML(str: string): string {
-  const div = document.createElement('div');
-  div.textContent = str;
-  return div.innerHTML;
-}
-
-/**
- * Extract YouTube video ID from URL.
- */
-function extractYouTubeId(url: string): string {
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/,
-    /youtube\.com\/embed\/([^&\s]+)/,
-  ];
-
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match) return match[1];
-  }
-
-  return '';
-}
-
-/**
- * Export a presentation to HTML and trigger browser download.
- *
- * Creates a self-contained HTML file and downloads it with the
- * presentation title as the filename.
- */
-export function downloadHTML(presentation: Presentation, theme?: string): void {
-  const html = exportToHTML(presentation, theme);
-  const blob = new Blob([html], { type: 'text/html' });
+export async function downloadHTML(
+  presentation: Presentation,
+  optionsOrTheme: ExportHTMLOptions | string = {},
+): Promise<void> {
+  const html = await exportToHTML(presentation, optionsOrTheme);
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const url = URL.createObjectURL(blob);
 
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `${presentation.title || 'presentation'}.html`;
+  anchor.download = `${sanitizeFilename(presentation.title)}.html`;
+  anchor.rel = 'noopener';
+  anchor.style.display = 'none';
+  document.body.appendChild(anchor);
   anchor.click();
+  anchor.remove();
 
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
 }

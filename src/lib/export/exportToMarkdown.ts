@@ -1,5 +1,6 @@
 import type { Presentation } from '@/types/presentation';
 import { serializePresentation } from '@/lib/serializer/serializePresentation';
+import { sanitizeFilename } from './exportUtils';
 
 /**
  * Export a presentation to markdown format.
@@ -24,8 +25,12 @@ export function downloadMarkdown(presentation: Presentation): void {
 
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = `${presentation.title || 'presentation'}.md`;
+  anchor.download = `${sanitizeFilename(presentation.title)}.md`;
+  anchor.style.display = 'none';
+  document.body.appendChild(anchor);
   anchor.click();
+  anchor.remove();
 
-  URL.revokeObjectURL(url);
+  // Revoking immediately can cancel the download in some browsers
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
 }

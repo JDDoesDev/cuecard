@@ -2,7 +2,8 @@ import { useState, useCallback } from 'react';
 import { usePresentationStore } from '@/hooks/usePresentationStore';
 import { useTheme } from '@/components/ThemeProvider/ThemeProvider';
 import { downloadMarkdown } from '@/lib/export/exportToMarkdown';
-import { downloadHTML } from '@/lib/export/exportToHTML';
+import { embedImagesForExport } from '@/lib/media/imageRestore';
+import { downloadHTML, type ExportProgress } from '@/lib/export/exportToHTML';
 import styles from './ExportDialog.module.css';
 
 interface ExportDialogProps {
@@ -22,6 +23,10 @@ export function ExportDialog({ isOpen, onClose }: ExportDialogProps) {
   const { theme } = useTheme();
   const [isExporting, setIsExporting] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
+  const [embedRemoteImages, setEmbedRemoteImages] = useState(false);
+  const [embedMarkdownImages, setEmbedMarkdownImages] = useState(true);
+  const [progress, setProgress] = useState<ExportProgress | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Handle PDF export via print dialog
   const handleExportPDF = useCallback(() => {
@@ -30,51 +35,70 @@ export function ExportDialog({ isOpen, onClose }: ExportDialogProps) {
     setTimeout(() => window.print(), 100);
   }, [onClose]);
 
-  // Handle Markdown export
-  const handleExportMarkdown = useCallback(() => {
+  // Handle Markdown export (optionally inlining uploaded images as data URIs)
+  const handleExportMarkdown = useCallback(async () => {
     if (!presentation) return;
 
     setIsExporting(true);
     setExportingFormat('markdown');
+    setError(null);
 
     try {
-      downloadMarkdown(presentation);
-
-      // Brief delay for UX, then close dialog
-      setTimeout(() => {
-        setIsExporting(false);
-        setExportingFormat(null);
-        onClose();
-      }, 300);
-    } catch (error) {
-      console.error('Markdown export failed:', error);
+      const target = embedMarkdownImages ? await embedImagesForExport(presentation) : presentation;
+      downloadMarkdown(target);
+      setIsExporting(false);
+      setExportingFormat(null);
+      onClose();
+    } catch (err) {
+      console.error('Markdown export failed:', err);
+      setError(`Markdown export failed: ${err instanceof Error ? err.message : String(err)}`);
       setIsExporting(false);
       setExportingFormat(null);
     }
-  }, [presentation, onClose]);
+  }, [presentation, embedMarkdownImages, onClose]);
 
-  // Handle HTML export
-  const handleExportHTML = useCallback(() => {
+  // Handle HTML export (async: embeds images and fonts)
+  const handleExportHTML = useCallback(async () => {
     if (!presentation) return;
 
     setIsExporting(true);
     setExportingFormat('html');
+    setError(null);
+    setProgress(null);
 
     try {
-      downloadHTML(presentation, theme);
-
-      // Brief delay for UX, then close dialog
-      setTimeout(() => {
-        setIsExporting(false);
-        setExportingFormat(null);
-        onClose();
-      }, 500);
-    } catch (error) {
-      console.error('HTML export failed:', error);
+      await downloadHTML(presentation, {
+        theme,
+        aspectRatio: presentation.aspectRatio,
+        embedRemoteImages,
+        onProgress: setProgress,
+      });
       setIsExporting(false);
       setExportingFormat(null);
+      setProgress(null);
+      onClose();
+    } catch (err) {
+      console.error('HTML export failed:', err);
+      setError(`HTML export failed: ${err instanceof Error ? err.message : String(err)}`);
+      setIsExporting(false);
+      setExportingFormat(null);
+      setProgress(null);
     }
-  }, [presentation, theme, onClose]);
+  }, [presentation, theme, embedRemoteImages, onClose]);
+
+  const progressLabel = (() => {
+    if (!progress) return null;
+    switch (progress.stage) {
+      case 'images':
+        return progress.total ? `Embedding media (${progress.done}/${progress.total})` : 'Embedding media';
+      case 'fonts':
+        return 'Embedding fonts and styles';
+      case 'slides':
+        return `Rendering slides (${progress.done}/${progress.total})`;
+      default:
+        return 'Finishing';
+    }
+  })();
 
   // Handle dialog close
   const handleCancel = useCallback(() => {
@@ -130,10 +154,18 @@ export function ExportDialog({ isOpen, onClose }: ExportDialogProps) {
         <div className={styles.content}>
           {isExporting ? (
             <div className={styles.exporting}>
-              <p>Exporting as {exportingFormat}...</p>
+              <p role="status" aria-live="polite">
+                Exporting as {exportingFormat}...
+                {progressLabel && <><br />{progressLabel}</>}
+              </p>
             </div>
           ) : (
             <div className={styles.formats}>
+              {error && (
+                <p className={styles.error} role="alert">
+                  {error}
+                </p>
+              )}
               {/* PDF Export Card */}
               <button
                 className={styles.formatCard}
@@ -163,6 +195,14 @@ export function ExportDialog({ isOpen, onClose }: ExportDialogProps) {
                   </p>
                 </div>
               </button>
+              <label className={styles.option}>
+                <input
+                  type="checkbox"
+                  checked={embedMarkdownImages}
+                  onChange={(e) => setEmbedMarkdownImages(e.target.checked)}
+                />
+                Embed images in Markdown export (uploaded images inlined as data URIs)
+              </label>
 
               {/* HTML Export Card */}
               <button
@@ -178,6 +218,14 @@ export function ExportDialog({ isOpen, onClose }: ExportDialogProps) {
                   </p>
                 </div>
               </button>
+              <label className={styles.option}>
+                <input
+                  type="checkbox"
+                  checked={embedRemoteImages}
+                  onChange={(e) => setEmbedRemoteImages(e.target.checked)}
+                />
+                Embed remote images in HTML export (uploaded images are always embedded; remote servers must allow CORS)
+              </label>
             </div>
           )}
         </div>
