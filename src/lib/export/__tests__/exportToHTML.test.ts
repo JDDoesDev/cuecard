@@ -528,3 +528,53 @@ describe('review fixes', () => {
     fetchSpy.mockRestore();
   });
 });
+
+describe('html element fonts (offline)', () => {
+  it('pools data-URI font faces once and splices them into each iframe at runtime', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () => ({ ok: true, blob: async () => new Blob(['f'], { type: 'font/woff2' }) }) as unknown as Response,
+    );
+    const faces: CollectedFontFace[] = [
+      { family: 'Lato', descriptors: { 'font-weight': '400', 'unicode-range': 'U+0000-00FF' }, urls: ['https://a/lato-400.woff2'] },
+      { family: 'Lato', descriptors: { 'font-weight': '700', 'unicode-range': 'U+0000-00FF' }, urls: ['https://a/lato-700.woff2'] },
+      { family: 'Lato', descriptors: { 'font-weight': '400', 'unicode-range': 'U+0400-045F' }, urls: ['https://a/lato-cyr.woff2'] },
+      { family: 'Caveat', descriptors: { 'font-weight': '400' }, urls: ['https://a/caveat.woff2'] },
+    ];
+    const html = await exportToHTML(
+      deck(
+        [
+          { id: 'x1', type: 'html', position: pos, htmlContent: '<p style="font-family: Caveat">one</p>' },
+          { id: 'x2', type: 'html', position: pos, htmlContent: '<b>two</b>' },
+          { id: 'x3', type: 'html', position: pos, htmlContent: '<i>three</i>' },
+        ],
+        { fontBody: 'Lato' },
+      ),
+      { collectedCss: { css: '', fontFaces: faces, links: [], themeBlocks: {} } },
+    );
+    const doc = parse(html);
+    const poolEl = doc.querySelector('script[id$="-fonts"]')!;
+    const pool: string[] = JSON.parse(poolEl.textContent!);
+    expect(pool).toHaveLength(2); // Lato + Caveat, each stored once
+    expect(pool.join('').match(/@font-face/g)).toHaveLength(3); // latin 400/700 Lato + Caveat
+    expect(pool.join('')).not.toContain('lato-cyr');
+    // three iframes, but font data lives only in the pool (and the deck's own Lato faces)
+    const deckFonts = doc.getElementById('xdeck-fonts')!.textContent!;
+    expect(deckFonts).not.toContain('Caveat');
+    expect(html.match(/data:font\/woff2;base64,/g)!.length).toBe(3 + deckFonts.match(/@font-face/g)!.length);
+    const frames = Array.from(doc.querySelectorAll('[data-element-type=html] iframe'));
+    expect(frames.map((f) => f.getAttribute('data-xfonts')!.split(' ').length)).toEqual([2, 1, 1]);
+    expect(frames[1].getAttribute('srcdoc')).toContain('/*xfonts*/');
+
+    // run the runtime against the exported body: iframes receive their fonts
+    document.body.innerHTML = doc.body.innerHTML;
+    const script = Array.from(doc.querySelectorAll('script')).find((s) => !s.type)!.textContent!;
+    new Function(script)();
+    const live = Array.from(document.querySelectorAll('[data-element-type=html] iframe'));
+    expect(live[0].getAttribute('srcdoc')).toContain('font-family:"Caveat"');
+    expect(live[0].getAttribute('srcdoc')).toContain('font-family:"Lato"');
+    expect(live[1].getAttribute('srcdoc')).not.toContain('Caveat');
+    expect(live[1].getAttribute('srcdoc')).toContain('data:font/woff2;base64,');
+    document.body.innerHTML = '';
+    fetchSpy.mockRestore();
+  });
+});

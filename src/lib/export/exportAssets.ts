@@ -5,15 +5,15 @@
 
 import type { ImageElement } from '@/types/slide';
 import { sanitizeUrl } from '@/lib/security/sanitize';
+import {
+  blobToDataUrl,
+  parseFontFaceRule,
+  rangeNeeded,
+  textCodepoints,
+  type FontFaceSource,
+} from '@/lib/fonts/fontInline';
 
-export function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error ?? new Error('Failed to read blob'));
-    reader.readAsDataURL(blob);
-  });
-}
+export { blobToDataUrl };
 
 /** Fetch a URL and return it as a data URI, or null on any failure. */
 export async function fetchAsDataUrl(url: string, init?: RequestInit): Promise<string | null> {
@@ -63,13 +63,7 @@ export function resolveVideoSrc(url: string): string {
 // CSS collection
 // ============================================================================
 
-export interface CollectedFontFace {
-  family: string;
-  /** Declarations other than font-family/src (weight, style, unicode-range…) */
-  descriptors: Record<string, string>;
-  /** Absolute URLs from src, woff2 first */
-  urls: string[];
-}
+export type CollectedFontFace = FontFaceSource;
 
 export interface CollectedCss {
   /** All same-origin style rules except @font-face and per-theme variable blocks */
@@ -83,39 +77,10 @@ export interface CollectedCss {
 
 const THEME_BLOCK = /^\[data-theme=['"]?([\w-]+)['"]?\]$/;
 
-function unquote(s: string): string {
-  return s.trim().replace(/^['"]|['"]$/g, '');
-}
-
-function parseFontFace(rule: CSSFontFaceRule, baseUrl: string): CollectedFontFace | null {
-  const style = rule.style;
-  const family = unquote(style.getPropertyValue('font-family'));
-  const src = style.getPropertyValue('src');
-  if (!family || !src) return null;
-  const entries: Array<{ url: string; woff2: boolean }> = [];
-  const re = /url\(\s*(['"]?)(.*?)\1\s*\)\s*(?:format\(\s*['"]?([\w-]+)['"]?\s*\))?/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(src))) {
-    try {
-      entries.push({ url: new URL(m[2], baseUrl).href, woff2: m[3] === 'woff2' });
-    } catch {
-      // ignore malformed url
-    }
-  }
-  if (entries.length === 0) return null;
-  entries.sort((a, b) => Number(b.woff2) - Number(a.woff2));
-  const descriptors: Record<string, string> = {};
-  for (const prop of ['font-weight', 'font-style', 'font-stretch', 'unicode-range', 'font-display']) {
-    const v = style.getPropertyValue(prop).trim();
-    if (v) descriptors[prop] = v;
-  }
-  return { family, descriptors, urls: entries.map((e) => e.url) };
-}
-
 function walkRules(rules: CSSRuleList, baseUrl: string, out: CollectedCss): void {
   for (const rule of Array.from(rules)) {
     if (rule.type === 5 /* FONT_FACE_RULE */) {
-      const face = parseFontFace(rule as CSSFontFaceRule, baseUrl);
+      const face = parseFontFaceRule(rule as CSSFontFaceRule, baseUrl);
       if (face) out.fontFaces.push(face);
       continue;
     }
@@ -165,27 +130,6 @@ export function collectDocumentCss(doc: Document = document): CollectedCss {
 // Fonts
 // ============================================================================
 
-function parseUnicodeRange(range: string): Array<[number, number]> {
-  return range.split(',').map((part) => {
-    const p = part.trim().replace(/^u\+/i, '');
-    if (p.includes('?')) {
-      return [parseInt(p.replace(/\?/g, '0'), 16), parseInt(p.replace(/\?/g, 'F'), 16)] as [number, number];
-    }
-    const [a, b] = p.split('-');
-    const lo = parseInt(a, 16);
-    return [lo, b ? parseInt(b, 16) : lo] as [number, number];
-  }).filter(([a, b]) => !Number.isNaN(a) && !Number.isNaN(b));
-}
-
-function rangeNeeded(range: string | undefined, codepoints: Set<number>): boolean {
-  if (!range) return true;
-  const ranges = parseUnicodeRange(range);
-  for (const cp of codepoints) {
-    for (const [lo, hi] of ranges) if (cp >= lo && cp <= hi) return true;
-  }
-  return false;
-}
-
 /**
  * Build embedded @font-face CSS for every collected face whose family is in
  * `usedFamilies` (lower-case names) and whose unicode-range covers at least one
@@ -197,9 +141,7 @@ export async function buildEmbeddedFontCss(
   usedFamilies: ReadonlySet<string>,
   sampleText: string,
 ): Promise<{ css: string; failed: string[] }> {
-  const codepoints = new Set<number>();
-  for (const ch of sampleText) codepoints.add(ch.codePointAt(0)!);
-  for (let cp = 0x20; cp < 0x7f; cp++) codepoints.add(cp); // always basic latin
+  const codepoints = textCodepoints(sampleText);
 
   const failed = new Set<string>();
   const parts = await Promise.all(

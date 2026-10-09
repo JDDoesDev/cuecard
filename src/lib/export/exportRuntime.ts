@@ -91,6 +91,17 @@ var slides=stage?Array.prototype.filter.call(stage.children,function(c){return c
 var total=slides.length,cur=0,frag=0;
 var counter=byId('counter');
 var notes=byId('notes');
+// html-element iframes: splice in their @font-face CSS from the shared pool
+(function(){
+  var fe=byId('fonts'),pool;
+  try{pool=JSON.parse((fe&&fe.textContent)||'[]');}catch(e){pool=[];}
+  if(!pool.length||!stage)return;
+  Array.prototype.forEach.call(stage.querySelectorAll('.xel[data-element-type=html] iframe[data-xfonts]'),function(f){
+    var css=f.getAttribute('data-xfonts').split(' ').map(function(i){return pool[i|0]||'';}).join('');
+    var doc=f.getAttribute('srcdoc');
+    if(doc&&css)f.setAttribute('srcdoc',doc.replace('/*xfonts*/',function(){return css;}));
+  });
+})();
 var INTERACTIVE='a,button,input,textarea,select,label,video,audio,iframe,object,embed,summary,details,[contenteditable],[tabindex],[data-no-nav],.xui,.xnotes';
 function maxFrag(i){return (cfg.fragments&&cfg.fragments[i])|0;}
 function stopMedia(s){

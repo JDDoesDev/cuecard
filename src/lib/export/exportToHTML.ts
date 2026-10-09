@@ -27,7 +27,9 @@ import { computeTotalFragments } from '@/lib/fragments';
 import { embedImagesForExport } from '@/lib/media/imageRestore';
 import { escapeHtml, sanitizeHtml } from '@/lib/security/sanitize';
 import { getCustomThemeCss, isCustomThemeId } from '@/lib/theme/themeManager';
-import { buildHtmlSrcdoc } from '@/components/layouts/HtmlFrame';
+import { buildHtmlSrcdoc, frameFontFamilies, type HtmlFrameStyle } from '@/components/layouts/HtmlFrame';
+import { buildInlineFontCss, htmlUsesItalic } from '@/lib/fonts/fontInline';
+import { pruneCss } from './pruneCss';
 import {
   buildEmbeddedFontCss,
   collectDocumentCss,
@@ -130,7 +132,7 @@ function collectUsedFamilies(themeCss: string, p: Presentation, slides: Slide[])
       if ('fontFamily' in el) add(el.fontFamily);
       if (el.type === 'heading' || el.type === 'text') inline(el.content);
       else if (el.type === 'list') el.items.forEach(inline);
-      else if (el.type === 'html') inline(el.htmlContent);
+      // html elements render in sandboxed iframes with their own pooled fonts
     }
   }
   return used;
@@ -139,28 +141,85 @@ function collectUsedFamilies(themeCss: string, p: Presentation, slides: Slide[])
 /** Theme/font variables handed to sandboxed html-element iframes. */
 interface FrameContext {
   vars: Record<string, string>;
+  /** Lower-case family -> index into the shared iframe font pool */
+  fontPool?: Map<string, number>;
+}
+
+/** Placeholder in html-element srcdocs replaced by pooled @font-face CSS at runtime. */
+export const FRAME_FONTS_MARKER = '/*xfonts*/';
+/** Cap for the shared iframe font pool (bytes of CSS). */
+const FRAME_FONT_POOL_MAX_BYTES = 6 * 1024 * 1024;
+
+function frameStyle(el: SlideElement & { type: 'html' }, ctx: FrameContext): HtmlFrameStyle {
+  const share = Math.max(1, finite(el.position?.width, 100));
+  const vars: Record<string, string> = { ...ctx.vars };
+  for (const [k, cqw] of Object.entries(SLIDE_SCALE_CQW)) {
+    vars[k] = `${Math.round((cqw * 100 / share) * 1000) / 1000}vw`;
+  }
+  return {
+    vars,
+    fontFamily: vars['--font-body'] ?? 'sans-serif',
+    color: vars['--color-text-primary'] ?? 'inherit',
+    fontSize: vars['--font-size-xl'],
+    lineHeight: '1.6',
+  };
 }
 
 /**
  * Sandboxed srcdoc iframe for an `html` element (matches the app's HtmlFrame).
  * Slide-relative cqw sizes are converted to the iframe's own vw units using
  * the element's width share of the slide, so content scales with the deck.
+ * Fonts: the srcdoc links Google Fonts (works online / without JS) and carries
+ * a marker that the runtime replaces with the element's families from the
+ * shared data-URI font pool, so each font file is stored once per export.
  */
 function htmlFrameMarkup(el: SlideElement & { type: 'html' }, ctx: FrameContext): string {
-  const share = Math.max(1, finite(el.position?.width, 100));
-  const vars: Record<string, string> = { ...ctx.vars };
-  for (const [k, cqw] of Object.entries(SLIDE_SCALE_CQW)) {
-    vars[k] = `${Math.round((cqw * 100 / share) * 1000) / 1000}vw`;
-  }
-  const srcdoc = buildHtmlSrcdoc(el.htmlContent, {
-    vars,
-    fontFamily: vars['--font-body'] ?? 'sans-serif',
-    color: vars['--color-text-primary'] ?? 'inherit',
-    fontSize: vars['--font-size-xl'],
-    lineHeight: '1.6',
-  });
+  const style = frameStyle(el, ctx);
+  const poolIds = ctx.fontPool
+    ? [...new Set(frameFontFamilies(el.htmlContent, style)
+      .map((f) => ctx.fontPool!.get(f.toLowerCase()))
+      .filter((i): i is number => i !== undefined))]
+    : [];
+  const srcdoc = buildHtmlSrcdoc(el.htmlContent, style, poolIds.length ? { css: FRAME_FONTS_MARKER, inlined: [] } : undefined);
   return `<iframe sandbox="" srcdoc="${escapeHtml(srcdoc)}" title="Embedded HTML" ` +
+    (poolIds.length ? `data-xfonts="${poolIds.join(' ')}" ` : '') +
     'style="width:100%;height:100%;border:0;display:block;pointer-events:none;background:transparent"></iframe>';
+}
+
+/**
+ * Data-URI @font-face CSS for every family used by html elements, one pool
+ * entry per family (shared by all iframes). Families that cannot be inlined
+ * or exceed the size cap keep only their Google Fonts link.
+ */
+async function buildFrameFontPool(
+  slides: Slide[],
+  ctx: FrameContext,
+  faces: CollectedCss['fontFaces'],
+): Promise<{ pool: string[]; index: Map<string, number> }> {
+  const htmlEls = slides.flatMap((s) => (s.elements ?? []).filter((e): e is SlideElement & { type: 'html' } => e.type === 'html'));
+  const families = new Map<string, string>();
+  let italic = false;
+  let text = '';
+  for (const el of htmlEls) {
+    for (const f of frameFontFamilies(el.htmlContent, frameStyle(el, ctx))) families.set(f.toLowerCase(), f);
+    italic ||= htmlUsesItalic(el.htmlContent);
+    text += el.htmlContent;
+  }
+  const pool: string[] = [];
+  const index = new Map<string, number>();
+  let bytes = 0;
+  for (const family of families.values()) {
+    const { css } = await buildInlineFontCss([family], { faces, italic, text, maxBytes: FRAME_FONT_POOL_MAX_BYTES });
+    if (!css) continue;
+    if (bytes + css.length > FRAME_FONT_POOL_MAX_BYTES) {
+      console.warn(`HTML export: font "${family}" not embedded for html elements (size cap reached); it will load from Google Fonts when online`);
+      continue;
+    }
+    bytes += css.length;
+    index.set(family.toLowerCase(), pool.length);
+    pool.push(css);
+  }
+  return { pool, index };
 }
 
 /**
@@ -382,10 +441,11 @@ export async function exportToHTML(
       : options.collectedCss;
   const { id: theme, css: themeCss } = await resolveThemeCss(requestedTheme, collected?.themeBlocks);
   const slidesJson = JSON.stringify(slides);
+  const usedFamilies = collectUsedFamilies(themeCss, presentation, slides);
   const fonts = collected
     ? await buildEmbeddedFontCss(
         collected.fontFaces,
-        collectUsedFamilies(themeCss, presentation, slides),
+        usedFamilies,
         `${presentation.title ?? ''}${slidesJson}`,
       )
     : { css: '', failed: [] as string[] };
@@ -397,6 +457,8 @@ export async function exportToHTML(
   const { renderToStaticMarkup } = await import('react-dom/server');
   const fontStyle = slideFontStyle(presentation);
   const frameCtx: FrameContext = { vars: { ...parseCssVars(themeCss), ...parseCssVars(fontStyle) } };
+  const framePool = await buildFrameFontPool(slides, frameCtx, collected?.fontFaces ?? []);
+  frameCtx.fontPool = framePool.index;
   const token = `xdeck-${Math.random().toString(36).slice(2, 10)}`;
   const slideHtml = slides.map((slide, i) => {
     const elements = slide.elements ?? [];
@@ -419,6 +481,9 @@ export async function exportToHTML(
   }).replace(/</g, '\\u003c');
 
   const title = escapeHtml(presentation.title || 'Presentation');
+  const framePoolJson = JSON.stringify(framePool.pool).replace(/</g, '\\u003c');
+  const stageMarkup = slideHtml.join('\n');
+  const appCss = collected?.css ? pruneCss(collected.css, stageMarkup, { theme, usedFamilies }) : '';
   const links = Array.from(fontLinks)
     .map((href) => `<link rel="stylesheet" href="${escapeHtml(href)}">`)
     .join('\n');
@@ -434,7 +499,7 @@ export async function exportToHTML(
 <title>${title}</title>
 ${links}
 <style id="xdeck-app-css">
-${safeStyleText(collected?.css ?? '')}
+${safeStyleText(appCss)}
 </style>
 <style id="xdeck-theme">
 ${safeStyleText(themeCss)}
@@ -449,11 +514,12 @@ ${buildRuntimeCss(ratio)}
 </head>
 <body class="xdeck" data-aspect-ratio="${ratio.w}:${ratio.h}">
 <main class="xstage" id="${token}-stage" aria-label="${title}">
-${slideHtml.join('\n')}
+${stageMarkup}
 </main>
 <div class="xui" aria-live="polite"><span id="${token}-counter">${slides.length ? 1 : 0} / ${slides.length}</span></div>
 <div class="xnotes" id="${token}-notes" aria-label="Speaker notes"></div>
 <script type="application/json" id="${token}-data">${deckData}</script>
+${framePool.pool.length ? `<script type="application/json" id="${token}-fonts">${framePoolJson}</script>` : ''}
 <script>${buildRuntimeScript(token)}</script>
 </body>
 </html>`;

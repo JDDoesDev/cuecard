@@ -1,5 +1,12 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { THEME_STYLES_CHANGED_EVENT } from '@/lib/theme/themeManager';
+import {
+  buildInlineFontCss,
+  fontStacksInHtml,
+  htmlUsesItalic,
+  peekInlineFontCss,
+  type InlineFontResult,
+} from '@/lib/fonts/fontInline';
 
 // ============================================================================
 // Sandboxed HTML element renderer
@@ -19,8 +26,29 @@ import { THEME_STYLES_CHANGED_EVENT } from '@/lib/theme/themeManager';
 // px from the slide width, so use those for slide-proportional sizing.
 // The srcdoc is rebuilt (iframe reload) only when content, theme or the
 // rounded sizes change; resize-driven updates are debounced.
+//
+// Fonts: the opaque-origin iframe cannot load the app's bundled @fontsource
+// files or blob: URLs, so the font faces it needs (slide body font, heading /
+// code font when referenced, families named in the HTML) are inlined as
+// data: URIs (src/lib/fonts/fontInline.ts). Until they are ready (at most
+// FONT_WAIT_MS) and for families that cannot be inlined, Google Fonts links
+// are used. Later updates keep the previous fonts until the new ones are
+// built. Scaled-down views (thumbnails, previews) skip inlining entirely.
 
 const RESIZE_DEBOUNCE_MS = 150;
+const FONT_WAIT_MS = 1000;
+/** Slides rendered narrower than this (px) or scaled below COMPACT_SCALE count as thumbnails. */
+const COMPACT_WIDTH = 480;
+const COMPACT_SCALE = 0.6;
+
+/** True for thumbnail-like contexts (small or transform-scaled slide). */
+function isCompactView(el: HTMLElement): boolean {
+  const slide = el.closest<HTMLElement>('[data-slide-container]');
+  if (!slide) return false;
+  const shown = slide.getBoundingClientRect().width;
+  if (!shown) return false; // not laid out (hidden / test env)
+  return shown < COMPACT_WIDTH || (slide.offsetWidth > 0 && shown < slide.offsetWidth * COMPACT_SCALE);
+}
 
 const INHERITED_VARS = [
   '--color-bg-primary', '--color-bg-secondary', '--color-bg-tertiary',
@@ -67,12 +95,29 @@ export function extractWebFontFamilies(stacks: string[]): string[] {
   return [...families];
 }
 
-export function buildHtmlSrcdoc(html: string, style: HtmlFrameStyle): string {
+/** Web font families an html element renders with: inherited slide fonts + its own CSS. */
+export function frameFontFamilies(html: string, style: HtmlFrameStyle): string[] {
+  const stacks = [style.fontFamily, style.vars['--font-body'] ?? ''];
+  if (html.includes('--font-heading')) stacks.push(style.vars['--font-heading'] ?? '');
+  if (html.includes('--font-code')) stacks.push(style.vars['--font-code'] ?? '');
+  return extractWebFontFamilies([...stacks, ...fontStacksInHtml(html)]);
+}
+
+export interface HtmlFrameFonts {
+  /** @font-face CSS (data: URIs) placed before the frame styles */
+  css: string;
+  /** Families covered by `css`; these are not linked from Google Fonts */
+  inlined: string[];
+}
+
+export function buildHtmlSrcdoc(html: string, style: HtmlFrameStyle, fonts?: HtmlFrameFonts): string {
   const vars = Object.entries(style.vars)
     .filter(([, v]) => v)
     .map(([k, v]) => `${k}: ${cssValue(v)};`)
     .join(' ');
-  const fontLinks = extractWebFontFamilies([style.fontFamily, style.vars['--font-heading'] ?? '', style.vars['--font-body'] ?? ''])
+  const inlined = new Set((fonts?.inlined ?? []).map((f) => f.toLowerCase()));
+  const fontLinks = frameFontFamilies(html, style)
+    .filter((f) => !inlined.has(f.toLowerCase()))
     // Bare family always exists (400 is returned for missing axes, so bold is
     // requested in a separate, optional link).
     .map((f) => {
@@ -85,6 +130,7 @@ export function buildHtmlSrcdoc(html: string, style: HtmlFrameStyle): string {
   return `<!doctype html><html><head><meta charset="utf-8">` +
     `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
     fontLinks +
+    (fonts?.css ? `<style>${fonts.css.replace(/<\/style/gi, '')}</style>` : '') +
     `<style>:root { ${vars} } html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; } ` +
     `body { font-family: ${cssValue(style.fontFamily)}; color: ${cssValue(style.color)}; font-size: ${cssValue(style.fontSize)}; line-height: ${cssValue(style.lineHeight)}; }</style>` +
     `</head><body>${html}</body></html>`;
@@ -123,12 +169,14 @@ interface HtmlFrameProps {
 export function HtmlFrame({ html, className }: HtmlFrameProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [frameStyle, setFrameStyle] = useState<HtmlFrameStyle | null>(null);
+  const [compact, setCompact] = useState(false);
 
   useLayoutEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     let lastKey = '';
     const update = () => {
+      setCompact(isCompactView(el));
       const next = readStyle(el);
       const key = JSON.stringify(next);
       if (key !== lastKey) {
@@ -159,12 +207,50 @@ export function HtmlFrame({ html, className }: HtmlFrameProps) {
     };
   }, []);
 
+  // Inline the frame's fonts; render with links if they take too long.
+  const fontRequest = useMemo(() => {
+    if (!frameStyle || compact) return null;
+    const families = frameFontFamilies(html, frameStyle);
+    const options = { italic: htmlUsesItalic(html), text: html };
+    return { families, options, key: JSON.stringify([families, options]) };
+  }, [html, frameStyle, compact]);
+  const peeked = fontRequest ? peekInlineFontCss(fontRequest.families, fontRequest.options) : undefined;
+  const [loaded, setLoaded] = useState<{ key: string; fonts: InlineFontResult | null } | null>(null);
+
+  useEffect(() => {
+    if (!fontRequest || peeked) return;
+    const { key, families, options } = fontRequest;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      if (!cancelled) setLoaded((prev) => prev ?? { key, fonts: null });
+    }, FONT_WAIT_MS);
+    buildInlineFontCss(families, options)
+      .catch(() => null)
+      .then((fonts) => {
+        if (!cancelled) setLoaded((prev) => ({ key, fonts: fonts ?? prev?.fonts ?? null }));
+      })
+      .finally(() => window.clearTimeout(timer));
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [fontRequest, peeked]);
+
+  // Until fonts for the current request arrive, reuse the previous ones (no
+  // blank frame while editing); only the very first render waits.
+  const fontsReady = !fontRequest || !!peeked || loaded != null;
+  const fonts = (fontRequest ? peeked ?? loaded?.fonts : null) ?? undefined;
+  const srcdoc = useMemo(
+    () => (frameStyle && fontsReady ? buildHtmlSrcdoc(html, frameStyle, fonts) : null),
+    [html, frameStyle, fontsReady, fonts],
+  );
+
   return (
     <div ref={containerRef} className={className}>
-      {frameStyle && (
+      {srcdoc != null && (
         <iframe
           sandbox=""
-          srcDoc={buildHtmlSrcdoc(html, frameStyle)}
+          srcDoc={srcdoc}
           title="Embedded HTML"
           loading="lazy"
           style={{ width: '100%', height: '100%', border: 0, display: 'block', pointerEvents: 'none', background: 'transparent' }}
