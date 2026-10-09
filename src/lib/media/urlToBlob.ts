@@ -1,14 +1,16 @@
 import { compressForSlide } from './imageCompression';
-import { cacheImage } from './imageCaching';
+import { cacheImageBlob } from './imageCaching';
 
 /**
- * Fetches an image from a URL, compresses it, caches it to IndexedDB,
- * and returns a blob URL.
+ * Fetches an image from a URL, compresses it, caches it to IndexedDB under its
+ * content hash, and returns the live blob URL plus cache key.
  *
- * Falls back to original URL on CORS or fetch errors (image will display
- * but won't be cached offline).
+ * Falls back to the original URL (and no cacheKey) on CORS or fetch errors —
+ * the image will display from the network but won't be available offline.
  */
-export async function fetchAndCacheImage(url: string): Promise<string> {
+export async function fetchAndCacheImage(
+  url: string
+): Promise<{ blobUrl: string; cacheKey?: string }> {
   try {
     const response = await fetch(url);
     if (!response.ok) {
@@ -21,17 +23,11 @@ export async function fetchAndCacheImage(url: string): Promise<string> {
     const fileName = url.split('/').pop() || 'image';
     const file = new File([blob], fileName, { type: blob.type });
 
-    // Compress
     const compressed = await compressForSlide(file);
-
-    // Cache with URL as key
-    const cacheKey = `image:${url}`;
-    const blobUrl = await cacheImage(cacheKey, compressed);
-
-    return blobUrl;
+    return await cacheImageBlob(compressed);
   } catch (error) {
     console.warn('Failed to fetch/cache image, using original URL:', error);
-    return url; // Fallback: display original URL (not cached offline)
+    return { blobUrl: url };
   }
 }
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { presentationStore } from './store/presentationStore';
 import { ThemeProvider, useTheme } from './components/ThemeProvider/ThemeProvider';
 import { Presentation } from './components/Presentation/Presentation';
 import { EditorLayout } from './components/editor/EditorLayout';
@@ -11,9 +12,8 @@ import { usePresentationStore } from './hooks/usePresentationStore';
 import { usePresentationMode } from './hooks/usePresentationMode';
 import { createPresentation } from './types/presentation';
 import { AUTOSAVE_KEY } from './lib/storage/autosave';
-import { getCachedImage } from './lib/media/imageCaching';
-import { BUILT_IN_THEMES } from './lib/theme/builtInThemes';
-import { setTheme as setThemeManager } from './lib/theme/themeManager';
+import { computeImageRestoreUpdates, releaseUnreferencedImages } from './lib/media/imageRestore';
+import { ThemeOptions } from './components/theme/ThemeOptions';
 import styles from './App.module.css';
 
 // ============================================================================
@@ -22,8 +22,10 @@ import styles from './App.module.css';
 
 function AppContent() {
   const { theme, setTheme } = useTheme();
-  const { setPresentation, presentation } = usePresentationStore();
-  const [aspectRatio, setAspectRatio] = useState<'16:9' | '4:3' | '16:10'>('16:9');
+  const { setPresentation, presentation, setAspectRatio } = usePresentationStore();
+  // Aspect ratio is part of the presentation so it persists and reaches
+  // presenter/audience windows.
+  const aspectRatio = presentation?.aspectRatio ?? '16:9';
   const [mode, setMode] = useState<'edit' | 'present'>('edit');
   const [showRecoveryMessage, setShowRecoveryMessage] = useState(false);
   const { mode: presentationMode, isPresenter, isAudience } = usePresentationMode();
@@ -33,6 +35,11 @@ function AppContent() {
   useEffect(() => {
     if (hasInitialized.current) return;
     hasInitialized.current = true;
+
+    // Presenter/audience windows are read-only followers of the editor: they
+    // must not create a sample presentation or take part in crash detection
+    // (the editor window's session flag would look like a crash to them).
+    if (presentationMode !== 'edit') return;
 
     const SESSION_KEY = 'fldc-session-active';
     const hadSavedData = localStorage.getItem(AUTOSAVE_KEY) !== null;
@@ -54,7 +61,7 @@ function AppContent() {
 
     // No saved presentation - load sample
     const samplePresentation = createPresentation();
-    samplePresentation.title = 'FLDC 2026 - Sample Presentation';
+    samplePresentation.title = 'Sample Presentation';
     samplePresentation.slides = [
       // Slide 1: Title
       {
@@ -62,7 +69,7 @@ function AppContent() {
         layout: 'title',
         transition: 'fade',
         elements: [
-          { id: crypto.randomUUID(), type: 'heading', position: { x: 15, y: 30, width: 70, height: 20 }, content: 'Welcome to FLDC 2026', level: 1 },
+          { id: crypto.randomUUID(), type: 'heading', position: { x: 15, y: 30, width: 70, height: 20 }, content: 'Welcome', level: 1 },
           { id: crypto.randomUUID(), type: 'text', position: { x: 20, y: 55, width: 60, height: 10 }, content: 'Markdown-First Presentations' },
         ],
       },
@@ -140,29 +147,48 @@ function createPresentation(): Presentation {
       },
     ];
     setPresentation(samplePresentation);
-  }, [setPresentation, presentation]);
+  }, [setPresentation, presentation, presentationMode]);
 
-  // Restore blob URLs for cached images after rehydration.
-  // Blob URLs from previous sessions are dead — regenerate from IndexedDB.
-  const hasRestoredImages = useRef(false);
-  const { updateElement } = usePresentationStore();
+  // Regenerate blob URLs for cached images. Blob URLs die with the document
+  // that created them, so this runs whenever the presentation changes (new
+  // file opened, markdown imported, rehydrated, undo/redo) and only touches
+  // image elements whose cachedUrl isn't this document's live URL for their
+  // cacheKey. Uses restoreCachedUrls so it doesn't create undo history.
+  const restoreState = useRef({ running: false, rerun: false });
   useEffect(() => {
-    if (!presentation || hasRestoredImages.current) return;
-    hasRestoredImages.current = true;
+    if (!presentation) return;
 
-    const restoreImages = async () => {
-      for (let si = 0; si < presentation.slides.length; si++) {
-        for (const el of presentation.slides[si].elements) {
-          if (el.type !== 'image' || !el.cacheKey) continue;
-          const freshBlobUrl = await getCachedImage(el.cacheKey);
-          if (freshBlobUrl) {
-            updateElement(si, el.id, { cachedUrl: freshBlobUrl } as any);
+    const run = async () => {
+      const guard = restoreState.current;
+      if (guard.running) {
+        guard.rerun = true;
+        return;
+      }
+      guard.running = true;
+      try {
+        do {
+          guard.rerun = false;
+          const current = presentationStore.getState().presentation;
+          if (!current) break;
+          const updates = await computeImageRestoreUpdates(current);
+          if (updates.length === 0) continue;
+          const state = presentationStore.getState();
+          if (state.presentation?.id !== current.id) {
+            guard.rerun = true;
+            continue;
           }
-        }
+          state.restoreCachedUrls(updates);
+        } while (guard.rerun);
+        // Release against the latest state, after the run (not a stale snapshot)
+        releaseUnreferencedImages(presentationStore.getState().presentation);
+      } catch (e) {
+        console.error('Failed to restore cached images:', e);
+      } finally {
+        guard.running = false;
       }
     };
 
-    restoreImages();
+    run();
   }, [presentation]);
 
   const handleToggleMode = () => {
@@ -174,11 +200,8 @@ function createPresentation(): Presentation {
     return (
       <div className={styles.app}>
         <UpdatePrompt />
-        {showRecoveryMessage && (
-          <div className={styles.recoveryBanner}>Recovered from auto-save</div>
-        )}
         <PresenterView aspectRatio={aspectRatio} />
-        <PrintView />
+        <PrintView aspectRatio={aspectRatio} />
       </div>
     );
   }
@@ -186,12 +209,8 @@ function createPresentation(): Presentation {
   if (isAudience) {
     return (
       <div className={styles.app}>
-        <UpdatePrompt />
-        {showRecoveryMessage && (
-          <div className={styles.recoveryBanner}>Recovered from auto-save</div>
-        )}
         <AudienceView aspectRatio={aspectRatio} />
-        <PrintView />
+        <PrintView aspectRatio={aspectRatio} />
       </div>
     );
   }
@@ -225,14 +244,13 @@ function createPresentation(): Presentation {
                   className={styles.toolbarSelect}
                   value={theme}
                   onChange={(e) => {
-                    const newTheme = e.target.value as any;
-                    setThemeManager(newTheme);
+                    const newTheme = e.target.value;
                     setTheme(newTheme);
+                    // Release focus so arrow keys go back to slide navigation
+                    e.currentTarget.blur();
                   }}
                 >
-                  {BUILT_IN_THEMES.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
+                  <ThemeOptions />
                 </select>
               </div>
 
@@ -276,7 +294,7 @@ function createPresentation(): Presentation {
       </div>
 
       {/* PrintView: hidden on screen, visible in @media print for PDF export */}
-      <PrintView />
+      <PrintView aspectRatio={aspectRatio} />
     </div>
   );
 }

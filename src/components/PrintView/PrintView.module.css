@@ -22,6 +22,16 @@
     break-after: page;
     page-break-inside: avoid;
     break-inside: avoid;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .slideFrame {
+    position: relative;
+    width: min(100vw, calc(100vh * var(--print-ratio, 1.7778)));
+    aspect-ratio: var(--print-aspect, 16 / 9);
+    overflow: hidden;
   }
 
   /* Last slide should not force a blank trailing page */

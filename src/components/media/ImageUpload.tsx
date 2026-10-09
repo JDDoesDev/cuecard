@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { compressForSlide } from '@/lib/media/imageCompression';
-import { cacheImage } from '@/lib/media/imageCaching';
+import { cacheImageBlob } from '@/lib/media/imageCaching';
 import styles from './ImageUpload.module.css';
 
 interface ImageUploadProps {
-  onImageAdded: (blobUrl: string, originalName: string, cacheKey: string) => void;
+  onImageAdded: (blobUrl: string, originalName: string, cacheKey?: string) => void;
 }
 
 export function ImageUpload({ onImageAdded }: ImageUploadProps) {
@@ -15,30 +15,36 @@ export function ImageUpload({ onImageAdded }: ImageUploadProps) {
     if (!files || files.length === 0) return;
 
     const fileArray = Array.from(files);
+    const errors: string[] = [];
 
     for (let i = 0; i < fileArray.length; i++) {
       const file = fileArray[i];
+      if (!file.type.startsWith('image/')) {
+        errors.push(`${file.name} is not an image`);
+        continue;
+      }
       setStatus(`Compressing ${file.name}... (${i + 1}/${fileArray.length})`);
 
       try {
-        // Compress
         const compressed = await compressForSlide(file);
 
-        // Cache with file name and size as key
-        const cacheKey = `image:${file.name}-${file.size}`;
-        const blobUrl = await cacheImage(cacheKey, compressed);
+        // Content-addressed key (image:<sha256>) — distinct files never collide
+        const { cacheKey, blobUrl } = await cacheImageBlob(compressed, file.name);
 
-        // Notify parent
         onImageAdded(blobUrl, file.name, cacheKey);
-
-        setStatus(`Added ${file.name}`);
       } catch (error) {
         console.error('Failed to process image:', error);
-        setStatus(`Error: ${file.name}`);
+        const reason = error instanceof Error && error.message ? error.message : 'unknown error';
+        errors.push(`${file.name}: ${reason}`);
       }
     }
 
-    setTimeout(() => setStatus(''), 2000);
+    if (errors.length > 0) {
+      setStatus(`Could not add ${errors.join('; ')}`);
+      setTimeout(() => setStatus(''), 6000);
+    } else {
+      setStatus('');
+    }
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -80,7 +86,7 @@ export function ImageUpload({ onImageAdded }: ImageUploadProps) {
           <div className={styles.hint}>Supports multiple files</div>
         </div>
       </label>
-      {status && <div className={styles.status}>{status}</div>}
+      {status && <div className={styles.status} role="status">{status}</div>}
     </div>
   );
 }

@@ -38,14 +38,17 @@ export function AddElementToolbar({ slideIndex, showGrid, onGridToggle }: AddEle
     });
   };
 
-  const handleImageAdded = (blobUrl: string, originalName: string, cacheKey: string) => {
+  // `url` keeps the original filename / remote URL (used for markdown export
+  // and relinking); the blob itself lives in IndexedDB under `cacheKey` and
+  // `cachedUrl` is regenerated each session by App's image-restore effect.
+  const handleImageAdded = (blobUrl: string, originalName: string, cacheKey?: string) => {
     addElement({
       id: crypto.randomUUID(),
       type: 'image',
       position: { x: 25, y: 15, width: 50, height: 60 },
       url: originalName,
-      cachedUrl: blobUrl,
-      cacheKey,
+      ...(blobUrl ? { cachedUrl: blobUrl } : {}),
+      ...(cacheKey ? { cacheKey } : {}),
     });
     setImagePopoverOpen(false);
   };

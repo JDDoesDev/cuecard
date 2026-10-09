@@ -1,8 +1,12 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { parsePresentation } from '@/lib/parser/parsePresentation';
 import { presentationStore } from '@/store/presentationStore';
 import { Slide } from '@/components/Slide/Slide';
 import type { Presentation } from '@/types/presentation';
+import { formatValidationError } from '@/lib/storage/fileStorage';
+import { compressForSlide } from '@/lib/media/imageCompression';
+import { cacheImageBlob, getCachedImage, pinImageKeys, unpinImageKeys } from '@/lib/media/imageCaching';
+import { resolveImageReferences, findUnresolvedImageRefs, collectImageCacheKeys } from '@/lib/media/imageRestore';
 import styles from './MarkdownImportDialog.module.css';
 
 interface MarkdownImportDialogProps {
@@ -17,16 +21,61 @@ export function MarkdownImportDialog({ isOpen, onClose }: MarkdownImportDialogPr
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
 
-  // Handle file selection
-  const handleFileSelect = useCallback(async (file: File) => {
+  const [imageKeys, setImageKeys] = useState<Map<string, string>>(new Map());
+  const [unresolvedImages, setUnresolvedImages] = useState<string[]>([]);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  // Keep preview blob URLs alive while the dialog shows them (App's restore
+  // pass would otherwise release keys the store doesn't reference yet).
+  useEffect(() => {
+    if (!parsedPresentation) return;
+    const keys = [...collectImageCacheKeys(parsedPresentation)];
+    pinImageKeys(keys);
+    return () => unpinImageKeys(keys);
+  }, [parsedPresentation]);
+
+  // Cache selected image files (by content hash) and map them by filename
+  const cacheImageFiles = useCallback(async (files: File[], known: Map<string, string>) => {
+    const next = new Map(known);
+    for (const file of files) {
+      const blob = await compressForSlide(file);
+      const { cacheKey } = await cacheImageBlob(blob, file.name);
+      next.set(file.name.toLowerCase(), cacheKey);
+    }
+    return next;
+  }, []);
+
+  // Link image references to cached blobs and fill cachedUrl for the preview
+  const linkImages = useCallback(async (presentation: Presentation, keys: Map<string, string>) => {
+    const linked: Presentation = structuredClone(presentation);
+    await resolveImageReferences(linked, keys);
+    for (const slide of linked.slides) {
+      for (const el of slide.elements) {
+        if (el.type === 'image' && el.cacheKey) {
+          el.cachedUrl = (await getCachedImage(el.cacheKey)) ?? undefined;
+        }
+      }
+    }
+    setUnresolvedImages(findUnresolvedImageRefs(linked));
+    return linked;
+  }, []);
+
+  // Handle file selection: one markdown file plus any referenced images
+  const handleFilesSelect = useCallback(async (files: File[]) => {
     setError(null);
     setIsLoading(true);
 
     try {
-      // Read file contents
-      const markdownText = await file.text();
+      const markdownFile = files.find((f) => /\.(md|markdown)$/i.test(f.name));
+      const images = files.filter((f) => f.type.startsWith('image/'));
+      if (!markdownFile) {
+        throw new Error('Please include a .md or .markdown file.');
+      }
 
-      // Parse markdown using Phase 1 parser
+      const keys = await cacheImageFiles(images, imageKeys);
+      setImageKeys(keys);
+
+      const markdownText = await markdownFile.text();
       const presentation = await parsePresentation(markdownText);
 
       // Check if presentation has slides
@@ -34,29 +83,46 @@ export function MarkdownImportDialog({ isOpen, onClose }: MarkdownImportDialogPr
         setError('No slides found in the markdown file. Make sure slides are separated by --- markers.');
         setParsedPresentation(null);
       } else {
-        setParsedPresentation(presentation);
+        setParsedPresentation(await linkImages(presentation, keys));
       }
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? `Failed to parse markdown: ${err.message}`
-          : 'Failed to parse markdown file. Please check the file format.'
-      );
+      setError(`Failed to import markdown: ${formatValidationError(err)}`);
       setParsedPresentation(null);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [cacheImageFiles, imageKeys, linkImages]);
 
   // Handle file input change
   const handleFileInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-        handleFileSelect(file);
+      const files = Array.from(e.target.files ?? []);
+      e.target.value = '';
+      if (files.length > 0) {
+        handleFilesSelect(files);
       }
     },
-    [handleFileSelect]
+    [handleFilesSelect]
+  );
+
+  // Attach referenced images after the markdown has been parsed
+  const handleImageInputChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files ?? []).filter((f) => f.type.startsWith('image/'));
+      e.target.value = '';
+      if (files.length === 0 || !parsedPresentation) return;
+      setIsLoading(true);
+      try {
+        const keys = await cacheImageFiles(files, imageKeys);
+        setImageKeys(keys);
+        setParsedPresentation(await linkImages(parsedPresentation, keys));
+      } catch (err) {
+        setError(`Failed to add images: ${formatValidationError(err)}`);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [cacheImageFiles, imageKeys, linkImages, parsedPresentation]
   );
 
   // Handle import confirmation
@@ -68,6 +134,8 @@ export function MarkdownImportDialog({ isOpen, onClose }: MarkdownImportDialogPr
       // Reset state and close
       setParsedPresentation(null);
       setError(null);
+      setImageKeys(new Map());
+      setUnresolvedImages([]);
       onClose();
     }
   }, [parsedPresentation, onClose]);
@@ -76,6 +144,8 @@ export function MarkdownImportDialog({ isOpen, onClose }: MarkdownImportDialogPr
   const handleCancel = useCallback(() => {
     setParsedPresentation(null);
     setError(null);
+    setImageKeys(new Map());
+    setUnresolvedImages([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -131,17 +201,29 @@ export function MarkdownImportDialog({ isOpen, onClose }: MarkdownImportDialogPr
         </div>
 
         <div className={styles.content}>
+          {/* Hidden inputs stay mounted so "Try Another File" works from the error state */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".md,.markdown,image/*"
+            multiple
+            onChange={handleFileInputChange}
+            className={styles.fileInput}
+            aria-label="Select markdown file and images"
+          />
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleImageInputChange}
+            className={styles.fileInput}
+            aria-label="Select referenced images"
+          />
+
           {/* File upload area */}
           {!parsedPresentation && !error && !isLoading && (
             <div className={styles.uploadArea}>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".md,.markdown"
-                onChange={handleFileInputChange}
-                className={styles.fileInput}
-                aria-label="Select markdown file"
-              />
               <button
                 className={styles.uploadButton}
                 onClick={handleClickFileInput}
@@ -149,7 +231,8 @@ export function MarkdownImportDialog({ isOpen, onClose }: MarkdownImportDialogPr
                 Select Markdown File
               </button>
               <p className={styles.uploadHint}>
-                Choose a .md or .markdown file with slides separated by ---
+                Choose a .md or .markdown file with slides separated by ---.
+                Select the images it references at the same time to include them.
               </p>
             </div>
           )}
@@ -176,7 +259,7 @@ export function MarkdownImportDialog({ isOpen, onClose }: MarkdownImportDialogPr
           )}
 
           {/* Preview area */}
-          {parsedPresentation && !error && (
+          {parsedPresentation && !error && !isLoading && (
             <>
               <div className={styles.previewInfo}>
                 <p className={styles.slideCount}>
@@ -186,6 +269,20 @@ export function MarkdownImportDialog({ isOpen, onClose }: MarkdownImportDialogPr
                 <p className={styles.presentationTitle}>
                   Title: {parsedPresentation.title}
                 </p>
+                {unresolvedImages.length > 0 && (
+                  <div className={styles.uploadHint} role="status">
+                    <p>
+                      {unresolvedImages.length} image{unresolvedImages.length !== 1 ? 's' : ''} not found:{' '}
+                      {unresolvedImages.join(', ')}
+                    </p>
+                    <button
+                      className={styles.retryButton}
+                      onClick={() => imageInputRef.current?.click()}
+                    >
+                      Add Image Files
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className={styles.previewGrid}>

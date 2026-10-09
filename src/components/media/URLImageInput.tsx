@@ -3,7 +3,7 @@ import { fetchAndCacheImage } from '@/lib/media/urlToBlob';
 import styles from './URLImageInput.module.css';
 
 interface URLImageInputProps {
-  onImageAdded: (blobUrl: string, originalUrl: string, cacheKey: string) => void;
+  onImageAdded: (blobUrl: string, originalUrl: string, cacheKey?: string) => void;
 }
 
 export function URLImageInput({ onImageAdded }: URLImageInputProps) {
@@ -26,9 +26,8 @@ export function URLImageInput({ onImageAdded }: URLImageInputProps) {
     setIsLoading(true);
 
     try {
-      const cacheKey = `image:${trimmedUrl}`;
-      const blobUrl = await fetchAndCacheImage(trimmedUrl);
-      onImageAdded(blobUrl, trimmedUrl, cacheKey);
+      const { blobUrl, cacheKey } = await fetchAndCacheImage(trimmedUrl);
+      onImageAdded(blobUrl === trimmedUrl ? '' : blobUrl, trimmedUrl, cacheKey);
       setUrl(''); // Clear input on success
     } catch (err) {
       console.error('Failed to add image from URL:', err);
