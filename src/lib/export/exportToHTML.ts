@@ -169,18 +169,17 @@ function frameStyle(el: SlideElement & { type: 'html' }, ctx: FrameContext): Htm
  * Sandboxed srcdoc iframe for an `html` element (matches the app's HtmlFrame).
  * Slide-relative cqw sizes are converted to the iframe's own vw units using
  * the element's width share of the slide, so content scales with the deck.
- * Fonts: the srcdoc links Google Fonts (works online / without JS) and carries
- * a marker that the runtime replaces with the element's families from the
- * shared data-URI font pool, so each font file is stored once per export.
+ * Fonts: the srcdoc carries a marker that the runtime replaces with the
+ * element's families from the shared data-URI font pool, so each font file is
+ * stored once per export. Only families missing from the pool link Google Fonts.
  */
 function htmlFrameMarkup(el: SlideElement & { type: 'html' }, ctx: FrameContext): string {
   const style = frameStyle(el, ctx);
-  const poolIds = ctx.fontPool
-    ? [...new Set(frameFontFamilies(el.htmlContent, style)
-      .map((f) => ctx.fontPool!.get(f.toLowerCase()))
-      .filter((i): i is number => i !== undefined))]
-    : [];
-  const srcdoc = buildHtmlSrcdoc(el.htmlContent, style, poolIds.length ? { css: FRAME_FONTS_MARKER, inlined: [] } : undefined);
+  const families = frameFontFamilies(el.htmlContent, style);
+  // Pooled families are embedded by the runtime; only the rest link Google Fonts
+  const pooled = ctx.fontPool ? families.filter((f) => ctx.fontPool!.has(f.toLowerCase())) : [];
+  const poolIds = [...new Set(pooled.map((f) => ctx.fontPool!.get(f.toLowerCase())!))];
+  const srcdoc = buildHtmlSrcdoc(el.htmlContent, style, poolIds.length ? { css: FRAME_FONTS_MARKER, inlined: pooled } : undefined);
   return `<iframe sandbox="" srcdoc="${escapeHtml(srcdoc)}" title="Embedded HTML" ` +
     (poolIds.length ? `data-xfonts="${poolIds.join(' ')}" ` : '') +
     'style="width:100%;height:100%;border:0;display:block;pointer-events:none;background:transparent"></iframe>';

@@ -142,16 +142,9 @@ test.describe('images across file switches (File System Access API)', () => {
     await expectFirstDeckWithImage(page);
   });
 
-  // KNOWN BUG (data loss): after Save/Open via the File System Access API the
-  // file handle stays active (module state in src/lib/storage/fileStorage.ts).
-  // Importing markdown (MarkdownImportDialog.handleImport -> setPresentation)
-  // and "New" (EditorToolbar only calls setCurrentFileName(null)) never clear
-  // it, so setupFileAutoSave/scheduleFileWrite (src/lib/storage/autosave.ts)
-  // writes the *other* deck into the previously saved file ~2s later. Reopening
-  // that file then shows the wrong deck and its images are gone.
-  // Remove test.fail() once deck switches call setFileHandle(null).
+  // Regression: the open file belongs to one deck. Importing markdown or
+  // starting New must never let file autosave write the other deck into it.
   test('importing another deck does not overwrite the previously saved file', async ({ page }) => {
-    test.fail(true, 'Known bug: active file handle is not cleared on markdown import; autosave overwrites the saved file');
     await openEditor(page);
     await uploadImage(page);
     await saveAs(page, 'first.cuecard.json');
@@ -165,7 +158,6 @@ test.describe('images across file switches (File System Access API)', () => {
   });
 
   test('starting a New presentation does not overwrite the previously saved file', async ({ page }) => {
-    test.fail(true, 'Known bug: "New" does not clear the active file handle; autosave overwrites the saved file');
     await openEditor(page);
     await uploadImage(page);
     await saveAs(page, 'first.cuecard.json');

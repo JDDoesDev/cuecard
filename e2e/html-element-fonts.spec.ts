@@ -69,15 +69,9 @@ test.describe('html element fonts (sandboxed iframe, inlined fonts)', () => {
     await expectLatoLoaded(iframe);
   });
 
-  // KNOWN BUG: the export inlines html-element fonts from a shared pool
-  // (data-xfonts + FRAME_FONTS_MARKER), but htmlFrameMarkup
-  // (src/lib/export/exportToHTML.ts, buildHtmlSrcdoc(..., { css: FRAME_FONTS_MARKER, inlined: [] }))
-  // passes an empty `inlined` list, so every frame still links Google Fonts for
-  // all of its families (here Lato and Source Sans 3, 400 + 700). Offline that
-  // is 4 failed requests + console errors per frame; online it is needless
-  // third-party requests. Fix: pass the pooled families as `inlined`.
+  // Regression: fonts embedded from the export's font pool must not also be
+  // linked from Google Fonts (failed requests offline, needless ones online).
   test('exported html element frame makes no network font requests when its fonts are inlined', async ({ page, context, pageErrors }, testInfo) => {
-    test.fail(true, 'Known bug: exported html frames link Google Fonts even for families inlined from the font pool');
     await openEditor(page);
     await importMarkdown(page, fixture('html-font-deck.md'));
     const file = await exportHtml(page, testInfo.outputPath());

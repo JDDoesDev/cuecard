@@ -21,14 +21,23 @@ import { collectImageCacheKeys, resolveImageReferences } from '@/lib/media/image
 // ============================================================================
 
 let currentFileHandle: FileSystemFileHandle | null = null;
+// Id of the presentation the open file belongs to. Writes for any other deck
+// (after Import, New, etc.) must never land in this file.
+let currentFilePresentationId: string | null = null;
 
 export function getFileHandle(): FileSystemFileHandle | null {
   return currentFileHandle;
 }
 
-export function setFileHandle(handle: FileSystemFileHandle | null) {
+export function setFileHandle(handle: FileSystemFileHandle | null, presentationId: string | null = null) {
   if (handle !== currentFileHandle) resetFileCaches();
   currentFileHandle = handle;
+  currentFilePresentationId = handle ? presentationId : null;
+}
+
+/** True when the open file belongs to this presentation. */
+export function isFileForPresentation(presentation: Presentation): boolean {
+  return currentFileHandle !== null && currentFilePresentationId === presentation.id;
 }
 
 export function getFileName(): string | null {
@@ -66,7 +75,7 @@ export async function saveToFile(
   const json = await serializePresentationFile(presentation);
 
   // Try writing to existing file handle first
-  if (!forceNewFile && currentFileHandle) {
+  if (!forceNewFile && currentFileHandle && isFileForPresentation(presentation)) {
     try {
       const writable = await currentFileHandle.createWritable();
       await writable.write(json);
@@ -75,7 +84,7 @@ export async function saveToFile(
       return { success: true, fileName: currentFileHandle.name };
     } catch {
       // Permission revoked or file moved — fall through to picker
-      currentFileHandle = null;
+      setFileHandle(null);
     }
   }
 
@@ -89,8 +98,7 @@ export async function saveToFile(
       const writable = await handle.createWritable();
       await writable.write(json);
       await writable.close();
-      if (handle !== currentFileHandle) resetFileCaches();
-      currentFileHandle = handle;
+      setFileHandle(handle, presentation.id);
       lastWrittenSignature = contentSignature(presentation);
       return { success: true, fileName: handle.name };
     } catch (e: any) {
@@ -116,6 +124,11 @@ export async function saveToFile(
  */
 export async function writeToCurrentFile(presentation: Presentation): Promise<boolean> {
   if (!currentFileHandle) return false;
+  if (!isFileForPresentation(presentation)) {
+    // A different deck is loaded: detach from the file instead of overwriting it
+    setFileHandle(null);
+    return false;
+  }
 
   // Skip writes when nothing persistable changed (e.g. only session cachedUrls
   // were regenerated after opening the file).
@@ -131,7 +144,7 @@ export async function writeToCurrentFile(presentation: Presentation): Promise<bo
     return true;
   } catch {
     // Handle was revoked or file removed
-    currentFileHandle = null;
+    setFileHandle(null);
     return false;
   }
 }
@@ -160,6 +173,7 @@ export async function openFromFile(): Promise<{
       // Switch the active handle only after a successful parse
       if (handle !== currentFileHandle) dataUriCache.clear();
       currentFileHandle = handle;
+      currentFilePresentationId = presentation.id;
       lastWrittenSignature = contentSignature(presentation);
       return { success: true, presentation, fileName: handle.name };
     } catch (e: any) {
@@ -183,7 +197,7 @@ export async function openFromFile(): Promise<{
         const presentation = await parsePresentationFile(await file.text());
         // Fallback has no writable handle: drop any stale one so auto-save
         // doesn't write this presentation into the previously opened file.
-        currentFileHandle = null;
+        setFileHandle(null);
         resolve({ success: true, presentation, fileName: file.name });
       } catch (e) {
         reject(e);

@@ -4,7 +4,7 @@ import { usePresentationStore } from '@/hooks/usePresentationStore';
 import { useTheme } from '@/components/ThemeProvider/ThemeProvider';
 import { openDualScreen } from '@/hooks/usePresentationMode';
 import { ThemeOptions } from '@/components/theme/ThemeOptions';
-import { saveToFile, openFromFile, getFileName, formatValidationError } from '@/lib/storage/fileStorage';
+import { saveToFile, openFromFile, getFileName, setFileHandle, formatValidationError } from '@/lib/storage/fileStorage';
 import { createPresentation } from '@/types/presentation';
 import { LAYOUTS, type LayoutPreset } from '@/types/slide';
 import { getAvailableFonts } from '@/lib/fonts/availableFonts';
@@ -182,6 +182,7 @@ export function EditorToolbar({
             className={styles.button}
             onClick={() => {
               if (window.confirm('Start a new presentation? Any unsaved changes will be lost.')) {
+                setFileHandle(null);
                 store.setPresentation(createPresentation());
                 setCurrentFileName(null);
               }
