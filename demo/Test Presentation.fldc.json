@@ -1,0 +1,249 @@
+{
+  "schemaVersion": "1.0",
+  "id": "7d99821d-58b0-4e3c-ae07-3af362af2a78",
+  "title": "Test Presentation",
+  "theme": "dark",
+  "slides": [
+    {
+      "id": "00fe65bf-5059-4a8f-8b47-e16107fe4e38",
+      "layout": "title",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "669d0e0a-d9a1-4af7-aec5-7280bbd0fc55",
+          "type": "heading",
+          "position": {
+            "x": 10,
+            "y": 30,
+            "width": 80,
+            "height": 20
+          },
+          "content": "Welcome to FLDC",
+          "level": 1
+        },
+        {
+          "id": "5d7fab64-0701-4b36-bc8d-d846d20e491f",
+          "type": "text",
+          "position": {
+            "x": 15,
+            "y": 55,
+            "width": 70,
+            "height": 10
+          },
+          "content": "A markdown-first presentation framework"
+        }
+      ]
+    },
+    {
+      "id": "39ff6f28-4eee-4bd0-9569-ac94a3afca9c",
+      "layout": "two-column",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "c81a0bb9-dfde-4b54-a0e0-d4dd23681ae5",
+          "type": "heading",
+          "position": {
+            "x": 5,
+            "y": 5,
+            "width": 90,
+            "height": 12
+          },
+          "content": "Two Column Layout",
+          "level": 2
+        },
+        {
+          "id": "42ff4fcc-b7ee-4416-aa4a-417c0ce5fe4e",
+          "type": "text",
+          "position": {
+            "x": 3,
+            "y": 20,
+            "width": 45,
+            "height": 75
+          },
+          "content": "This is the left column with some introductory text about the framework."
+        },
+        {
+          "id": "e01f7268-dd16-4061-9f4b-e81e0a65048a",
+          "type": "text",
+          "position": {
+            "x": 52,
+            "y": 20,
+            "width": 45,
+            "height": 75
+          },
+          "content": "This is the right column with additional details and supporting content."
+        }
+      ]
+    },
+    {
+      "id": "97eb87e4-375f-42a4-957b-d1ad0a0d4a78",
+      "layout": "title-list",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "00bd76e7-a57b-43e9-a563-fc3e5117bf58",
+          "type": "heading",
+          "position": {
+            "x": 5,
+            "y": 5,
+            "width": 90,
+            "height": 15
+          },
+          "content": "Key Features",
+          "level": 1
+        },
+        {
+          "id": "0a119d43-6fe8-4905-a13d-8a6662016fd1",
+          "type": "list",
+          "position": {
+            "x": 10,
+            "y": 25,
+            "width": 80,
+            "height": 70
+          },
+          "items": [
+            "Markdown import with layout inference",
+            "Inline WYSIWYG editing",
+            "Drag-and-drop slide reorder",
+            "Undo/redo support",
+            "Multiple export formats"
+          ],
+          "ordered": false
+        }
+      ]
+    },
+    {
+      "id": "6a3f0718-9277-4eec-ae51-d245dbfc6bc3",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "f574444e-efed-4b5d-842f-e69ba5eb1f07",
+          "type": "heading",
+          "position": {
+            "x": 5,
+            "y": 3,
+            "width": 90,
+            "height": 10
+          },
+          "content": "Code Example",
+          "level": 2
+        },
+        {
+          "id": "e471fdc7-349d-4a33-9bc1-fb9f4811912f",
+          "type": "code",
+          "position": {
+            "x": 5,
+            "y": 15,
+            "width": 90,
+            "height": 70
+          },
+          "code": "const presentation = parseMarkdown(input);\nconsole.log(presentation.slides.length);",
+          "language": "typescript"
+        },
+        {
+          "id": "1e9ab759-fbd3-48cf-a5af-e0fa5b859609",
+          "type": "text",
+          "position": {
+            "x": 5,
+            "y": 88,
+            "width": 90,
+            "height": 8
+          },
+          "content": "A simple parsing example"
+        }
+      ]
+    },
+    {
+      "id": "74a46ce4-fb94-42d1-be08-afa17f2112bb",
+      "layout": "media-anywhere",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "11e4b708-ad34-43ce-bb26-fb88e3c3387c",
+          "type": "text",
+          "position": {
+            "x": 5,
+            "y": 5,
+            "width": 50,
+            "height": 90
+          },
+          "content": "Photo caption goes here"
+        },
+        {
+          "id": "8644d809-e40f-4c32-9bc0-ddf02489125e",
+          "type": "image",
+          "position": {
+            "x": 58,
+            "y": 10,
+            "width": 38,
+            "height": 60
+          },
+          "url": ""
+        }
+      ]
+    },
+    {
+      "id": "6c136218-6f6b-41d9-99da-a8a5ba0eae05",
+      "layout": "media-anywhere",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "e3b305bc-4dc6-4f04-a7c2-29d326e4d923",
+          "type": "text",
+          "position": {
+            "x": 5,
+            "y": 5,
+            "width": 50,
+            "height": 90
+          },
+          "content": "Mixed Content\n\nHere is some text on the left side of the slide."
+        },
+        {
+          "id": "01a62c96-7125-462a-84c2-c37bdc5f5cf3",
+          "type": "image",
+          "position": {
+            "x": 58,
+            "y": 10,
+            "width": 38,
+            "height": 60
+          },
+          "url": "https://picsum.photos/400/300",
+          "alt": "Sample Image"
+        }
+      ]
+    },
+    {
+      "id": "20371f10-53c8-4e44-b462-936d2e70aba0",
+      "layout": "title",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "00a30e95-46ab-45a7-a230-879e4e370650",
+          "type": "heading",
+          "position": {
+            "x": 10,
+            "y": 30,
+            "width": 80,
+            "height": 20
+          },
+          "content": "Thank You",
+          "level": 1
+        },
+        {
+          "id": "9ba8f4d6-388f-40f5-bf2a-cd772e4ecbf4",
+          "type": "text",
+          "position": {
+            "x": 15,
+            "y": 55,
+            "width": 70,
+            "height": 10
+          },
+          "content": "Questions?"
+        }
+      ]
+    }
+  ],
+  "createdAt": "2026-02-10T03:17:02.941Z",
+  "updatedAt": "2026-02-10T03:19:29.116Z"
+}

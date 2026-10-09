@@ -1,0 +1,75 @@
+/* ============================================================================
+   Sunset Theme — Golden Hour
+   Warm multi-color gradient from peach through coral to soft rose.
+   Light theme with rich warmth — like a California sunset on parchment.
+   ============================================================================ */
+
+[data-theme='sunset'] {
+  /* Background Colors */
+  --color-bg-primary: #fef7ed;
+  --color-bg-secondary: #fef3ea;
+  --color-bg-tertiary: #fce8d9;
+
+  /* Slide Background — warm gradient wash */
+  --slide-bg: linear-gradient(145deg, #fef7ed 0%, #fef0e4 30%, #fde8e0 60%, #fdf2f8 100%);
+
+  /* Text Colors — warm charcoal, not pure black */
+  --color-text-primary: #2d1810;
+  --color-text-secondary: #6b3a2a;
+  --color-text-tertiary: #9c6b56;
+
+  /* Accent Colors — burnt sienna / terracotta */
+  --color-accent: #c2410c;
+  --color-accent-hover: #9a3412;
+  --color-accent-light: #fff1e6;
+
+  /* Code Block Colors */
+  --color-code-bg: #1c0e08;
+  --color-code-text: #fed7aa;
+
+  /* Border Colors — blush tones */
+  --color-border: #f5d0bc;
+  --color-border-light: #fae3d6;
+
+  /* Typography — editorial serif headings, clean body */
+  --font-heading: 'Playfair Display', Georgia, serif;
+  --font-body: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-code: 'Fira Code', 'Courier New', monospace;
+
+  /* Font Sizes */
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.8125rem;
+  --font-size-base: 0.875rem;
+  --font-size-lg: 1rem;
+  --font-size-xl: 1.125rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+  --font-size-4xl: 2.25rem;
+  --font-size-5xl: 3rem;
+
+  /* Spacing */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+  --space-3xl: 4rem;
+
+  /* Border Radius — slightly softer */
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* Shadows — warm-tinted */
+  --shadow-sm: 0 1px 2px rgba(194, 65, 12, 0.04), 0 1px 1px rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 3px 6px rgba(194, 65, 12, 0.06), 0 4px 8px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 6px 14px rgba(194, 65, 12, 0.07), 0 8px 24px rgba(0, 0, 0, 0.06);
+  --shadow-xl: 0 12px 28px rgba(194, 65, 12, 0.08), 0 16px 48px rgba(0, 0, 0, 0.08);
+
+  /* Transitions */
+  --transition-fast: 140ms ease;
+  --transition-base: 200ms ease;
+  --transition-slow: 300ms ease;
+}

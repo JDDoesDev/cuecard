@@ -1,0 +1,61 @@
+/* ============================================================================
+   EditorLayout — Three-panel editor structure
+   ============================================================================ */
+
+.editorLayout {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Left Panel: Slide Thumbnails */
+.slidePanel {
+  width: 240px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg-secondary);
+  overflow-y: auto;
+}
+
+/* Main Area: Editor + Notes */
+.mainArea {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+/* Center: Slide Editor */
+.editorArea {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--bg-primary);
+}
+
+/* Bottom: Notes Panel */
+.notesArea {
+  height: 180px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+  overflow-y: auto;
+}
+
+/* Responsive: Stack on narrow screens */
+@media (max-width: 768px) {
+  .editorLayout {
+    flex-direction: column;
+  }
+
+  .slidePanel {
+    width: 100%;
+    height: 140px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .notesArea {
+    height: 140px;
+  }
+}

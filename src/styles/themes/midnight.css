@@ -1,0 +1,75 @@
+/* ============================================================================
+   Midnight Theme — Electric Depths
+   Pitch-dark base with electric cyan-to-blue gradient energy.
+   High-contrast dark theme with neon edge — cyberpunk without the cheese.
+   ============================================================================ */
+
+[data-theme='midnight'] {
+  /* Background Colors */
+  --color-bg-primary: #07080f;
+  --color-bg-secondary: #0c1019;
+  --color-bg-tertiary: #131826;
+
+  /* Slide Background — cool blue shift gradient */
+  --slide-bg: linear-gradient(160deg, #07080f 0%, #080c18 40%, #0a0f1e 70%, #0c0a16 100%);
+
+  /* Text Colors — crisp white with blue undertone */
+  --color-text-primary: #f0f4fc;
+  --color-text-secondary: #94a3c0;
+  --color-text-tertiary: #5b6a84;
+
+  /* Accent Colors — electric cyan */
+  --color-accent: #06b6d4;
+  --color-accent-hover: #22d3ee;
+  --color-accent-light: #082f3a;
+
+  /* Code Block Colors */
+  --color-code-bg: #030408;
+  --color-code-text: #7dd3fc;
+
+  /* Border Colors — subtle steel blue */
+  --color-border: #1a2238;
+  --color-border-light: #12182a;
+
+  /* Typography — clean geometric stack */
+  --font-heading: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-body: 'Source Sans 3', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-code: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+
+  /* Font Sizes */
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.8125rem;
+  --font-size-base: 0.875rem;
+  --font-size-lg: 1rem;
+  --font-size-xl: 1.125rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+  --font-size-4xl: 2.25rem;
+  --font-size-5xl: 3rem;
+
+  /* Spacing */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+  --space-3xl: 4rem;
+
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+
+  /* Shadows — cyan-tinted glow on dark */
+  --shadow-sm: 0 1px 3px rgba(6, 182, 212, 0.06), 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 3px 8px rgba(6, 182, 212, 0.08), 0 4px 10px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 6px 16px rgba(6, 182, 212, 0.1), 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-xl: 0 12px 32px rgba(6, 182, 212, 0.12), 0 16px 48px rgba(0, 0, 0, 0.4);
+
+  /* Transitions */
+  --transition-fast: 100ms ease;
+  --transition-base: 180ms ease;
+  --transition-slow: 280ms ease;
+}

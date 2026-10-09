@@ -1,0 +1,23 @@
+.guideContainer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+.guideLine {
+  position: absolute;
+  background: #ff3366;
+}
+
+.vertical {
+  width: 1px;
+  top: 0;
+  bottom: 0;
+}
+
+.horizontal {
+  height: 1px;
+  left: 0;
+  right: 0;
+}

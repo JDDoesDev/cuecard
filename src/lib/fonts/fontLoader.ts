@@ -1,0 +1,132 @@
+/**
+ * Runtime font loading via blob URLs and @font-face injection
+ *
+ * Downloads font files from Google Fonts, caches them in IndexedDB,
+ * and injects @font-face rules into the document.
+ */
+
+import { get, set } from 'idb-keyval';
+import type { GoogleFont } from './googleFontsAPI';
+
+// Track loaded fonts in memory
+const loadedFonts = new Set<string>();
+
+/**
+ * Convert variant string to CSS font-weight
+ *
+ * Examples: '400' -> 400, 'regular' -> 400, '700' -> 700, 'bold' -> 700
+ */
+function variantToWeight(variant: string): number {
+  if (variant === 'regular') return 400;
+  if (variant === 'bold') return 700;
+
+  // Extract numeric weight from variants like '300', '700', '300italic'
+  const numericMatch = variant.match(/\d+/);
+  return numericMatch ? parseInt(numericMatch[0], 10) : 400;
+}
+
+/**
+ * Convert variant string to CSS font-style
+ *
+ * Examples: 'italic' -> 'italic', '300italic' -> 'italic', 'regular' -> 'normal'
+ */
+function variantToStyle(variant: string): string {
+  return variant.includes('italic') ? 'italic' : 'normal';
+}
+
+/**
+ * Load a Google Font and inject @font-face rule
+ *
+ * Downloads font file, caches in IndexedDB, creates blob URL,
+ * and injects @font-face CSS rule into document.
+ */
+export async function loadGoogleFont(font: GoogleFont, variant: string = 'regular'): Promise<void> {
+  const cacheKey = `font:${font.family}:${variant}`;
+
+  // Check if already loaded
+  if (loadedFonts.has(cacheKey)) {
+    console.log(`Font already loaded: ${font.family} (${variant})`);
+    return;
+  }
+
+  // Get font URL from files object (force HTTPS - API returns HTTP URLs)
+  const fontUrl = font.files[variant]?.replace('http://', 'https://');
+  if (!fontUrl) {
+    throw new Error(`Variant ${variant} not available for font ${font.family}`);
+  }
+
+  try {
+    // Check IndexedDB cache first
+    let blob: Blob | undefined = await get(cacheKey);
+
+    if (!blob) {
+      // Cache miss - fetch font file
+      console.log(`Downloading font: ${font.family} (${variant})`);
+      const response = await fetch(fontUrl);
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch font: ${response.status} ${response.statusText}`);
+      }
+
+      blob = await response.blob();
+
+      // Cache in IndexedDB
+      await set(cacheKey, blob);
+      console.log(`Cached font in IndexedDB: ${cacheKey}`);
+    } else {
+      console.log(`Using cached font: ${font.family} (${variant})`);
+    }
+
+    // Create blob URL
+    const blobUrl = URL.createObjectURL(blob);
+
+    // Inject @font-face rule
+    const style = document.createElement('style');
+    style.textContent = `
+      @font-face {
+        font-family: '${font.family}';
+        src: url('${blobUrl}') format('truetype');
+        font-weight: ${variantToWeight(variant)};
+        font-style: ${variantToStyle(variant)};
+      }
+    `;
+    document.head.appendChild(style);
+
+    // Mark as loaded
+    loadedFonts.add(cacheKey);
+    console.log(`Loaded font: ${font.family} (${variant})`);
+  } catch (error) {
+    console.error(`Failed to load font ${font.family} (${variant}):`, error);
+    throw error;
+  }
+}
+
+/**
+ * Check if a font family has been loaded
+ */
+export function isFontLoaded(family: string): boolean {
+  // Check if any variant of this font family is loaded
+  for (const key of loadedFonts) {
+    if (key.startsWith(`font:${family}:`)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Get list of loaded font families
+ */
+export function getLoadedFonts(): string[] {
+  const families = new Set<string>();
+
+  for (const key of loadedFonts) {
+    // Extract family name from key format: "font:Family Name:variant"
+    const match = key.match(/^font:([^:]+):/);
+    if (match) {
+      families.add(match[1]);
+    }
+  }
+
+  return Array.from(families);
+}

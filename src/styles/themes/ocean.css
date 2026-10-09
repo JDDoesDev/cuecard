@@ -1,0 +1,75 @@
+/* ============================================================================
+   Ocean Theme — Deep Water
+   Teal-to-sapphire gradient evoking deep ocean depths.
+   Rich, saturated dark theme with the serene authority of open water.
+   ============================================================================ */
+
+[data-theme='ocean'] {
+  /* Background Colors */
+  --color-bg-primary: #041c2c;
+  --color-bg-secondary: #0a2435;
+  --color-bg-tertiary: #103044;
+
+  /* Slide Background — teal-to-sapphire gradient */
+  --slide-bg: linear-gradient(140deg, #041c2c 0%, #062a3a 35%, #0a2540 65%, #0d1f3c 100%);
+
+  /* Text Colors — seafoam white */
+  --color-text-primary: #e6f2f8;
+  --color-text-secondary: #92bdd0;
+  --color-text-tertiary: #5a8da6;
+
+  /* Accent Colors — bright seafoam/teal */
+  --color-accent: #2dd4bf;
+  --color-accent-hover: #14b8a6;
+  --color-accent-light: #0a2a28;
+
+  /* Code Block Colors */
+  --color-code-bg: #020e16;
+  --color-code-text: #5eead4;
+
+  /* Border Colors — dark teal */
+  --color-border: #14384e;
+  --color-border-light: #0e2c40;
+
+  /* Typography — clean sans-serif with character */
+  --font-heading: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-body: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-code: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+
+  /* Font Sizes */
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.8125rem;
+  --font-size-base: 0.875rem;
+  --font-size-lg: 1rem;
+  --font-size-xl: 1.125rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+  --font-size-4xl: 2.25rem;
+  --font-size-5xl: 3rem;
+
+  /* Spacing */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+  --space-3xl: 4rem;
+
+  /* Border Radius — smooth, rounded like water */
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* Shadows — teal-tinted depth */
+  --shadow-sm: 0 1px 3px rgba(45, 212, 191, 0.05), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 3px 8px rgba(45, 212, 191, 0.07), 0 4px 10px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 6px 16px rgba(45, 212, 191, 0.08), 0 8px 24px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 12px 32px rgba(45, 212, 191, 0.1), 0 16px 48px rgba(0, 0, 0, 0.35);
+
+  /* Transitions */
+  --transition-fast: 130ms ease;
+  --transition-base: 200ms ease;
+  --transition-slow: 300ms ease;
+}

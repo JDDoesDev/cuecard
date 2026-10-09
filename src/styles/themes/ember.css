@@ -1,0 +1,75 @@
+/* ============================================================================
+   Ember Theme — Molten Warmth
+   Deep charcoal with a warm amber/orange gradient glow from within.
+   Dark theme with volcanic energy — rich, bold, and commanding.
+   ============================================================================ */
+
+[data-theme='ember'] {
+  /* Background Colors */
+  --color-bg-primary: #1a1210;
+  --color-bg-secondary: #1e1714;
+  --color-bg-tertiary: #2a201b;
+
+  /* Slide Background — warm undertone gradient */
+  --slide-bg: linear-gradient(150deg, #1a1210 0%, #1c1410 30%, #1e150e 60%, #18110f 100%);
+
+  /* Text Colors — warm cream/ivory */
+  --color-text-primary: #f5ede4;
+  --color-text-secondary: #c4aa90;
+  --color-text-tertiary: #8a7260;
+
+  /* Accent Colors — molten amber */
+  --color-accent: #f59e0b;
+  --color-accent-hover: #fbbf24;
+  --color-accent-light: #2a1f0a;
+
+  /* Code Block Colors */
+  --color-code-bg: #0d0a08;
+  --color-code-text: #fcd34d;
+
+  /* Border Colors — warm brown */
+  --color-border: #342a22;
+  --color-border-light: #28201a;
+
+  /* Typography — bold condensed headings, warm body */
+  --font-heading: 'Oswald', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-body: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-code: 'Fira Code', 'Courier New', monospace;
+
+  /* Font Sizes */
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.8125rem;
+  --font-size-base: 0.875rem;
+  --font-size-lg: 1rem;
+  --font-size-xl: 1.125rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+  --font-size-4xl: 2.25rem;
+  --font-size-5xl: 3rem;
+
+  /* Spacing */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+  --space-3xl: 4rem;
+
+  /* Border Radius — slightly tighter, more industrial */
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  /* Shadows — warm amber glow */
+  --shadow-sm: 0 1px 3px rgba(245, 158, 11, 0.06), 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 3px 8px rgba(245, 158, 11, 0.08), 0 4px 10px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 6px 16px rgba(245, 158, 11, 0.1), 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-xl: 0 12px 32px rgba(245, 158, 11, 0.12), 0 16px 48px rgba(0, 0, 0, 0.4);
+
+  /* Transitions */
+  --transition-fast: 120ms ease;
+  --transition-base: 200ms ease;
+  --transition-slow: 320ms ease;
+}

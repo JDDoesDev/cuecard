@@ -1,0 +1,44 @@
+/* ============================================================================
+   Print Stylesheet
+
+   Optimizes the presentation for PDF export via window.print().
+   Hides all screen UI, shows only PrintView with one slide per page.
+   ============================================================================ */
+
+@page {
+  size: landscape;
+  margin: 0;
+}
+
+@media print {
+  /* Preserve background colors and images */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Remove height/overflow constraints from entire document chain.
+     global.css sets html, body, #root to height:100%; overflow:hidden
+     which clips PrintView to a single page. */
+  html, body, #root, #root > * {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Hide ALL screen-only content (toolbar, editor, presentation view) */
+  [data-screen-only] {
+    display: none !important;
+  }
+
+  /* Remove shadows and borders from slides in print mode */
+  [data-print-view] [class*='slide'] {
+    box-shadow: none !important;
+    border: none !important;
+  }
+}

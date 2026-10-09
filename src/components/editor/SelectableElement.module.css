@@ -1,0 +1,27 @@
+.elementContainer {
+  cursor: pointer;
+}
+
+.elementContainer:hover:not(.selected) {
+  outline: 1px dashed rgba(59, 130, 246, 0.5);
+}
+
+.elementContainer.selected {
+  /* Blue border with white outline for contrast */
+  outline: 1px solid white;
+  border: 2px solid #3b82f6;
+}
+
+.elementContainer.dragging,
+.elementContainer.resizing {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.content {
+  pointer-events: none;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}

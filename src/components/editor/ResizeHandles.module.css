@@ -1,0 +1,76 @@
+.handle {
+  position: absolute;
+  background: white;
+  border: 2px solid #3b82f6;
+  z-index: 10;
+}
+
+/* Corner handles: 8x8px squares */
+.handle.nw,
+.handle.ne,
+.handle.se,
+.handle.sw {
+  width: 8px;
+  height: 8px;
+}
+
+.handle.nw {
+  top: -4px;
+  left: -4px;
+  cursor: nw-resize;
+}
+
+.handle.ne {
+  top: -4px;
+  right: -4px;
+  cursor: ne-resize;
+}
+
+.handle.se {
+  bottom: -4px;
+  right: -4px;
+  cursor: se-resize;
+}
+
+.handle.sw {
+  bottom: -4px;
+  left: -4px;
+  cursor: sw-resize;
+}
+
+/* Edge handles: strips along edges */
+.handle.n,
+.handle.s {
+  height: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+}
+
+.handle.n {
+  top: -3px;
+  cursor: n-resize;
+}
+
+.handle.s {
+  bottom: -3px;
+  cursor: s-resize;
+}
+
+.handle.e,
+.handle.w {
+  width: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 40px;
+}
+
+.handle.e {
+  right: -3px;
+  cursor: e-resize;
+}
+
+.handle.w {
+  left: -3px;
+  cursor: w-resize;
+}

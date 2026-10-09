@@ -1,0 +1,209 @@
+/* ============================================================================
+   PresenterView Styles
+   Dark-themed grid layout for presenter mode
+   ============================================================================ */
+
+.presenterGrid {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  grid-template-rows: 3fr 1fr;
+  height: 100vh;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  gap: 12px;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+/* Section labels */
+.sectionLabel {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #aaa;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Current Slide (top-left) */
+.currentSlide {
+  grid-column: 1;
+  grid-row: 1;
+  background: #0f0f1e;
+  border: 1px solid #2a2a3e;
+  border-radius: 8px;
+  padding: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Next Preview (top-right) */
+.nextPreview {
+  grid-column: 2;
+  grid-row: 1;
+  background: #0f0f1e;
+  border: 1px solid #2a2a3e;
+  border-radius: 8px;
+  padding: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.endMessage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-style: italic;
+  color: #888;
+  font-size: 1.1rem;
+}
+
+/* Speaker Notes (bottom-left) */
+.notes {
+  grid-column: 1;
+  grid-row: 2;
+  background: #0f0f1e;
+  border: 1px solid #2a2a3e;
+  border-radius: 8px;
+  padding: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.notesContent {
+  flex: 1;
+  overflow-y: auto;
+  font-size: 1.1rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* Controls Bar (bottom-right) */
+.controls {
+  grid-column: 2;
+  grid-row: 2;
+  background: #0f0f1e;
+  border: 1px solid #2a2a3e;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.timerDisplay {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.25rem;
+  font-weight: 600;
+  width: 100%;
+  justify-content: center;
+}
+
+.timerLabel {
+  color: #aaa;
+  font-size: 0.875rem;
+  font-weight: 400;
+}
+
+.timerValue {
+  font-family: 'Courier New', monospace;
+  color: #4caf50;
+  font-size: 1.5rem;
+}
+
+.slideCounter {
+  font-size: 1rem;
+  color: #aaa;
+  font-weight: 600;
+  width: 100%;
+  text-align: center;
+}
+
+.controlButton {
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  background: #2a2a3e;
+  color: #e0e0e0;
+  border: 1px solid #3a3a4e;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.controlButton:hover:not(:disabled) {
+  background: #3a3a4e;
+  border-color: #4a4a5e;
+}
+
+.controlButton:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.endButton {
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  background: #5a2020;
+  color: #e0e0e0;
+  border: 1px solid #8a3030;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.endButton:hover {
+  background: #8a3030;
+  border-color: #aa4040;
+}
+
+/* Slide Preview Containers */
+.slidePreviewContainer {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  pointer-events: none; /* Read-only preview */
+}
+
+.slidePreviewContainer[data-aspect-ratio='16:9'] {
+  aspect-ratio: 16 / 9;
+}
+
+.slidePreviewContainer[data-aspect-ratio='4:3'] {
+  aspect-ratio: 4 / 3;
+}
+
+.slidePreviewContainer[data-aspect-ratio='16:10'] {
+  aspect-ratio: 16 / 10;
+}
+
+/* Scale down slide to fit container */
+.slidePreviewContainer > * {
+  max-width: 100%;
+  max-height: 100%;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Error state */
+.error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  color: #f44336;
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
+}

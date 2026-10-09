@@ -1,0 +1,161 @@
+/* ============================================================================
+   AddElementToolbar — Element insertion controls
+   ============================================================================ */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 6px);
+  margin-bottom: 8px;
+}
+
+.section {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  margin-right: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.button {
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  transition: all var(--transition-fast, 120ms);
+  min-width: 28px;
+  text-align: center;
+}
+
+.button:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.button:active {
+  transform: scale(0.96);
+}
+
+.button[data-active='true'] {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.button[data-active='true']:hover {
+  background: var(--accent-hover);
+  color: white;
+  border-color: var(--accent-hover);
+}
+
+.separator {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 3px;
+}
+
+.popoverContainer {
+  position: relative;
+}
+
+.popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 6px);
+  box-shadow: var(--shadow-lg);
+  z-index: 1000;
+  min-width: 280px;
+  max-width: 320px;
+}
+
+.popoverTabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.popoverTabs button {
+  flex: 1;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: var(--font-body);
+  color: var(--text-tertiary);
+  transition: all var(--transition-fast, 120ms);
+}
+
+.popoverTabs button:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.popoverTabs button.activeTab {
+  color: var(--accent);
+  border-bottom: 2px solid var(--accent);
+  font-weight: 600;
+}
+
+.popoverContent {
+  padding: 12px;
+}
+
+.videoForm {
+  display: flex;
+  gap: 8px;
+}
+
+.videoInput {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 4px);
+  font-size: 12px;
+  font-family: var(--font-body);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  transition: border-color var(--transition-fast, 120ms);
+}
+
+.videoInput:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.videoButton {
+  padding: 6px 12px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  font-size: 12px;
+  font-family: var(--font-body);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition-fast, 120ms);
+}
+
+.videoButton:hover {
+  background: var(--accent-hover);
+}
