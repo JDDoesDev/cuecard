@@ -868,6 +868,7 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
           type: 'list',
           items: items.length > 0 ? items : [''],
           ordered: oldEl.type === 'list' ? oldEl.ordered : false,
+          ...(oldEl.type === 'list' && oldEl.start !== undefined && { start: oldEl.start }),
           ...(oldEl.type === 'list' && oldEl.fragmentPerItem && { fragmentPerItem: true }),
         };
       } else {

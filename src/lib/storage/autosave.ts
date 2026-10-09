@@ -16,6 +16,7 @@ import { CURRENT_SCHEMA_VERSION, type Presentation } from '@/types/presentation'
 import type { PresentationState } from '@/store/presentationStore';
 import { writeToCurrentFile, getFileHandle } from './fileStorage';
 import { migrateLegacyTextContent } from '@/lib/editor/legacyTextContent';
+import { normalizeNestedListItems } from '@/lib/migration/migrateSlide';
 
 export const AUTOSAVE_KEY = 'cuecard-presentation';
 export const AUTOSAVE_VERSION = 2;
@@ -210,6 +211,9 @@ export const autosaveStorage: PersistStorage<PersistedState> = {
       const parsed = JSON.parse(str) as StorageValue<PersistedState>;
       lastSerialized = str;
       knownStamp = readStamp(str);
+      // Cheap, idempotent cleanup of nested list items from older editor versions
+      // (before lastCore, so a no-op load never looks like an unsaved change)
+      normalizeNestedListItems(parsed.state?.presentation?.slides);
       lastCore = serializeCore(parsed);
       return { state: parsed.state, version: parsed.version };
     } catch (err) {

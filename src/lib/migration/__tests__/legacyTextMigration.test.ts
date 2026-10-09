@@ -47,3 +47,15 @@ describe('migratePresentation legacy text content', () => {
     expect(textOf(migratePresentation(deck('1.0', html)))).toBe(html);
   });
 });
+
+describe('migratePresentation nested list items', () => {
+  it('drops Tiptap <p> wrappers inside nested list items, keeping other items intact', () => {
+    const raw = deck(CURRENT_SCHEMA_VERSION, 'x');
+    raw.slides[0].elements.push({
+      id: 'e2', type: 'list', position: { x: 0, y: 0, width: 50, height: 20 },
+      items: ['a<ul><li><p>b</p><ol start="2"><li><p>c</p></li></ol></li></ul>', '<strong>plain</strong>'], ordered: false,
+    } as never);
+    const el = migratePresentation(raw).slides[0].elements[1];
+    expect(el.type === 'list' && el.items).toEqual(['a<ul><li>b<ol start="2"><li>c</li></ol></li></ul>', '<strong>plain</strong>']);
+  });
+});

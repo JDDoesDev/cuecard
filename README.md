@@ -110,6 +110,15 @@ Unknown or invalid directive values (e.g. `<!-- transition: spin -->`) are ignor
 
 Each markdown block becomes one element, in document order: headings, paragraphs (text), lists, fenced code, images, and raw HTML blocks. Tables, block quotes and other blocks become text elements holding their markdown verbatim. An image whose URL is a video file (`.mp4`, `.webm`, `.mov`, …) or a YouTube/Vimeo link becomes a video element.
 
+Lists keep their structure: nested sub-lists (indented under an item, any mix of `-` and `1.` lists, any depth) stay part of their parent item, and an ordered list keeps its start number (`3. Third` starts the list at 3). Export writes them back as indented markdown lists:
+
+```markdown
+3. Third **bold**
+   - sub-point with [a link](https://example.com)
+     1. deeper
+4. Fourth
+```
+
 The layout (inferred or set with `layout:`) only decides **default positions**; it never drops or reorders content. Elements are laid out top-to-bottom in source order and always fit on the slide.
 
 ### Lossless Export Format
@@ -143,7 +152,7 @@ Fragments let you reveal elements incrementally during presentation. Press next 
 Rules for the markdown directives:
 
 - `<!-- fragment: N -->` applies to the next element (or the next `element` block). N is a whole number ≥ 0.
-- `<!-- fragment-items -->` only affects lists. Put it together with `fragment: N` before the list; items then appear on clicks N, N+1, ….
+- `<!-- fragment-items -->` only affects lists. Put it together with `fragment: N` before the list; items then appear on clicks N, N+1, …. Only top-level items are steps; nested sub-items appear with their parent.
 - An image paragraph containing several images gives the fragment to the first one.
 
 - Elements without a fragment value are visible immediately (step 0)

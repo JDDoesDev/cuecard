@@ -165,3 +165,17 @@ describe('cross-tab conflicts', () => {
     expect(m.hasStorageConflict()).toBe(false);
   });
 });
+
+describe('autosave rehydrate cleanup', () => {
+  it('normalizes old nested list items on every load (no version bump)', async () => {
+    const m = await load();
+    const list = { id: 'l', type: 'list', position: { x: 0, y: 0, width: 1, height: 1 }, ordered: false,
+      items: ['a<ul><li><p>b</p></li></ul>', 'Use `<ul>` and `<p>` tags'] };
+    localStorage.setItem(m.AUTOSAVE_KEY, JSON.stringify({
+      state: { presentation: { title: 't', slides: [{ id: 's', elements: [list, null] }, null] } },
+      version: 2,
+    }));
+    const got = m.autosaveStorage.getItem(m.AUTOSAVE_KEY) as { state: { presentation: { slides: Array<{ elements: Array<{ items?: string[] }> }> } } };
+    expect(got.state.presentation.slides[0].elements[0].items).toEqual(['a<ul><li>b</li></ul>', 'Use `<ul>` and `<p>` tags']);
+  });
+});

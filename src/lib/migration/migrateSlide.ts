@@ -14,6 +14,7 @@ import type {
 import { LAYOUTS } from '@/types/slide';
 import { CURRENT_SCHEMA_VERSION, type Presentation } from '@/types/presentation';
 import { migrateLegacyTextContent } from '@/lib/editor/legacyTextContent';
+import { normalizeListItem } from '@/lib/editor/listItems';
 
 /**
  * Migrate a legacy slide (discriminated union with layout-specific fields)
@@ -315,6 +316,23 @@ function migrateAnySlide(raw: unknown, warnings: string[]): Slide {
 }
 
 /**
+ * Nested sub-lists saved by older editor versions kept Tiptap's <p> wrappers
+ * inside nested <li>; canonical markup exports as markdown lists. Idempotent
+ * and tolerant of malformed input, so it can run on every load.
+ */
+export function normalizeNestedListItems(slides: unknown): void {
+  if (!Array.isArray(slides)) return;
+  for (const slide of slides as Array<{ elements?: unknown }>) {
+    if (!slide || !Array.isArray(slide.elements)) continue;
+    slide.elements = slide.elements.map((el: { type?: unknown; items?: unknown }) =>
+      el?.type === 'list' && Array.isArray(el.items) && el.items.every((item) => typeof item === 'string')
+        ? { ...el, items: (el.items as string[]).map(normalizeListItem) }
+        : el
+    );
+  }
+}
+
+/**
  * Migrate a raw presentation object (e.g. parsed `.cuecard.json` or an older
  * autosave) to the current shape:
  * - legacy layout-specific slides -> universal element model (`migrateSlide`)
@@ -342,6 +360,8 @@ export function migratePresentation(raw: unknown, warnings: string[] = []): Pres
       );
     }
   }
+
+  normalizeNestedListItems(slides);
 
   const presentation: Presentation = {
     schemaVersion: CURRENT_SCHEMA_VERSION,

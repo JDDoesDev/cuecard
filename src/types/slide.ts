@@ -53,8 +53,14 @@ export interface ListElement {
   id: string;
   type: 'list';
   position: ElementPosition;
+  /**
+   * Inline content per top-level item; an item may end with nested sub-lists
+   * as HTML (`<ul>`/`<ol>`), see src/lib/editor/listItems.ts.
+   */
   items: string[];
   ordered: boolean;
+  /** First number of an ordered list (omitted when 1). */
+  start?: number;
   fragment?: number;
   fragmentPerItem?: boolean;
   lineHeight?: number;
@@ -181,6 +187,7 @@ export const ListElementSchema = z.object({
   position: ElementPositionSchema,
   items: z.array(z.string()),
   ordered: z.boolean(),
+  start: z.number().int().min(0).optional(),
   fragment: z.number().optional(),
   fragmentPerItem: z.boolean().optional(),
   lineHeight: z.number().optional(),

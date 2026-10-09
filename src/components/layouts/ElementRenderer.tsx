@@ -27,6 +27,7 @@ import { usePresentationMode } from '@/hooks/usePresentationMode';
 import { getVisibleItemCount } from '@/lib/fragments';
 import { scaleInlineFontSizes } from '@/lib/editor/fontSizeExtension';
 import { getElementTextAlign } from '@/lib/editor/textAlign';
+import { inlineMarkdownToHtml as listInlineMarkdownToHtml } from '@/lib/editor/listItems';
 import { ShapeRenderer } from './ShapeRenderer';
 import styles from './ElementRenderer.module.css';
 
@@ -153,7 +154,31 @@ const MISSING_STYLE: React.CSSProperties = {
 
 /** Sanitize rich-text HTML right before it is injected into the DOM. */
 function safeHtml(html: string): string {
-  return sanitizeHtml(scaleInlineFontSizes(html));
+  return withExternalLinkTargets(sanitizeHtml(scaleInlineFontSizes(html)));
+}
+
+/**
+ * List item -> HTML. Items holding HTML (editor output, nested lists) pass
+ * through; markdown items are converted with code spans kept literal, so text
+ * like "Use `<ul>`" is not treated as markup.
+ */
+function listItemHtml(item: string): string {
+  return /<[a-z][\s\S]*>/i.test(item.replace(/`[^`]*`/g, '')) ? item : listInlineMarkdownToHtml(item);
+}
+
+/** External links open in a new tab (stored content keeps plain `<a href>`). */
+export function withExternalLinkTargets(html: string): string {
+  if (!/<a\b/i.test(html) || typeof document === 'undefined') return html;
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  let changed = false;
+  for (const a of Array.from(tpl.content.querySelectorAll('a[href]'))) {
+    if (a.hasAttribute('target') || !/^https?:/i.test(a.getAttribute('href')!.trim())) continue;
+    a.setAttribute('target', '_blank');
+    if (!a.hasAttribute('rel')) a.setAttribute('rel', 'noopener noreferrer');
+    changed = true;
+  }
+  return changed ? tpl.innerHTML : html;
 }
 
 interface ElementRendererProps {
@@ -264,14 +289,18 @@ export function ElementRenderer({ element, visibleFragment, staticExport }: Elem
         ? getVisibleItemCount(element, visibleFragment)
         : element.items.length;
       return (
-        <ListTag className={styles.list} style={hasListStyle ? listStyle : undefined}>
+        <ListTag
+          className={styles.list}
+          style={hasListStyle ? listStyle : undefined}
+          start={element.ordered && Number.isInteger(element.start) && element.start !== 1 ? element.start : undefined}
+        >
           {element.items.map((item, idx) => {
             const itemVisible = idx < itemCount;
             return (
               <li
                 key={idx}
                 className={`${styles.listItem} ${styles.listItemFragment} ${itemVisible ? '' : styles.listItemHidden}`}
-                dangerouslySetInnerHTML={{ __html: safeHtml(inlineMarkdownToHtml(item)) }}
+                dangerouslySetInnerHTML={{ __html: safeHtml(listItemHtml(item)) }}
               />
             );
           })}

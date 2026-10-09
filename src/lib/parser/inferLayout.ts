@@ -1,4 +1,5 @@
 import type { Content } from 'mdast';
+import { inlineMarkdownToHtml } from '@/lib/editor/listItems';
 import type { z } from 'zod';
 import type { ElementPosition, LayoutPreset, SlideElement } from '@/types/slide';
 import {
@@ -444,6 +445,8 @@ function segmentToDrafts(
         if (single?.type === 'list') {
           candidate.items = extractListItems(single, source);
           if (!Object.hasOwn(props, 'ordered')) candidate.ordered = single.ordered === true;
+          const start = listStart(single);
+          if (!Object.hasOwn(props, 'start') && start !== undefined) candidate.start = start;
         } else if (body !== '') {
           asTextFallback();
         }
@@ -516,8 +519,16 @@ export function nodeToElements(node: Content, source: string): SlideElement[] {
       }
       return [{ ...base(), type: 'text', content: sliceNode(n, source) }];
     }
-    case 'list':
-      return [{ ...base(), type: 'list', items: extractListItems(n, source), ordered: n.ordered === true }];
+    case 'list': {
+      const start = listStart(n);
+      return [{
+        ...base(),
+        type: 'list',
+        items: extractListItems(n, source),
+        ordered: n.ordered === true,
+        ...(start !== undefined && { start }),
+      }];
+    }
     case 'code': {
       const el: SlideElement = { ...base(), type: 'code', code: n.value ?? '', language: n.lang || 'text' };
       const highlight = parseHighlightMeta(n.meta);
@@ -609,10 +620,17 @@ function parseHighlightMeta(meta: unknown): number[] | undefined {
   return lines.length > 0 ? lines : undefined;
 }
 
+/** Start number of an ordered mdast list, or undefined when it is 1 / unordered. */
+function listStart(listNode: any): number | undefined {
+  return listNode?.ordered === true && typeof listNode.start === 'number' && listNode.start !== 1
+    ? listNode.start
+    : undefined;
+}
+
 /**
  * Extract list items as inline markdown strings.
  * Multiple paragraphs within one item are joined with a newline (not glued);
- * nested lists are converted to HTML (the format the editor uses).
+ * nested lists are converted to canonical HTML (see src/lib/editor/listItems.ts).
  */
 export function extractListItems(listNode: any, source: string): string[] {
   if (!listNode || !Array.isArray(listNode.children)) return [];
@@ -643,6 +661,8 @@ function listItemContent(item: any, source: string): string {
  */
 function listNodeToHtml(listNode: any, source: string): string {
   const tag = listNode.ordered ? 'ol' : 'ul';
+  const start = listStart(listNode);
+  const open = start !== undefined ? `<ol start="${start}">` : `<${tag}>`;
   const items = (listNode.children || [])
     .map((item: any) => {
       if (item.type !== 'listItem') return '';
@@ -651,20 +671,13 @@ function listNodeToHtml(listNode: any, source: string): string {
         if (child.type === 'list') parts.push(listNodeToHtml(child, source));
         else parts.push(inlineMarkdownToHtml(sliceNode(child, source).trim()));
       }
-      return `<li>${parts.join('')}</li>`;
+      // Several paragraphs in one nested item are joined with <br>
+      const lists = parts.filter((p) => /^<(?:ul|ol)[\s>]/.test(p));
+      const inline = parts.filter((p) => !/^<(?:ul|ol)[\s>]/.test(p));
+      return `<li>${inline.join('<br>')}${lists.join('')}</li>`;
     })
     .join('');
-  return `<${tag}>${items}</${tag}>`;
+  return `${open}${items}</${tag}>`;
 }
 
-function inlineMarkdownToHtml(text: string): string {
-  let html = text;
-  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  html = html.replace(/~~(.+?)~~/g, '<del>$1</del>');
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  html = html.replace(/\[([^\][]+)\]\(([^()\s]+)\)/g, '<a href="$2">$1</a>');
-  return html;
-}
 

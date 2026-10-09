@@ -2,6 +2,7 @@ import type { Slide } from '../../types/presentation';
 import type { SlideElement } from '../../types/slide';
 import { directive, encodeDirectiveJson } from '../parser/directives';
 import { parsePresentationSync } from '../parser/parsePresentation';
+import { inlineMarkdownToHtml, splitListItem, type NestedList } from '../editor/listItems';
 
 /**
  * Markdown export format (lossless app -> md -> app):
@@ -84,7 +85,7 @@ export function slideToMarkdown(slide: Slide): string {
 const BODY_FIELDS: Record<SlideElement['type'], string[]> = {
   heading: ['content', 'level'],
   text: ['content'],
-  list: ['items', 'ordered'],
+  list: ['items', 'ordered', 'start'],
   code: ['code', 'language'],
   image: ['url', 'alt'],
   video: ['url'],
@@ -172,14 +173,12 @@ function elementBody(element: SlideElement): string | null {
       return `${'#'.repeat(element.level)} ${element.content}`.trimEnd();
     case 'text':
       return element.content;
-    case 'list':
+    case 'list': {
+      const first = element.start ?? 1;
       return element.items
-        .map((item, i) => {
-          const marker = element.ordered ? `${i + 1}.` : '-';
-          const indent = ' '.repeat(marker.length + 1);
-          return `${marker} ${item.replace(/\n/g, `\n${indent}`)}`.trimEnd();
-        })
+        .map((item, i) => listItemMarkdown(item, element.ordered ? `${first + i}.` : '-'))
         .join('\n');
+    }
     case 'code': {
       const longestRun = (element.code.match(/`+/g) ?? []).reduce((max, m) => Math.max(max, m.length), 0);
       const fence = '`'.repeat(Math.max(3, longestRun + 1));
@@ -196,6 +195,64 @@ function elementBody(element: SlideElement): string | null {
     case 'line':
       return null;
   }
+}
+
+// ============================================================================
+// Lists (nested sub-lists become indented markdown lists)
+// ============================================================================
+
+/** One list item; nested-list HTML is written as indented markdown when possible. */
+function listItemMarkdown(item: string, marker: string): string {
+  const indent = ' '.repeat(marker.length + 1);
+  const { text, lists } = splitListItem(item);
+  if (!lists) return `${marker} ${item.replace(/\n/g, `\n${indent}`)}`.trimEnd();
+  // The importer converts the content of an item that has sub-lists to HTML
+  const head = `${marker} ${inlineHtmlToMarkdown(text).replace(/\n/g, `\n${indent}`)}`.trimEnd();
+  return [head, ...subLists(lists, indent, head !== marker)].join('\n');
+}
+
+/**
+ * Indented sub-lists of an item. An ordered list not starting at 1 cannot
+ * interrupt a paragraph in CommonMark, so it is separated from the item text
+ * by a blank line.
+ */
+function subLists(lists: NestedList[], indent: string, afterText: boolean): string[] {
+  return lists.map((list, i) => {
+    const md = indentLines(nestedListMarkdown(list), indent);
+    return i === 0 && afterText && list.ordered && list.start !== 1 ? `\n${md}` : md;
+  });
+}
+
+function nestedListMarkdown(list: NestedList): string {
+  return list.items
+    .map((li, i) => {
+      const marker = list.ordered ? `${list.start + i}.` : '-';
+      const indent = ' '.repeat(marker.length + 1);
+      const head = `${marker} ${inlineHtmlToMarkdown(li.text)}`.trimEnd();
+      return [head, ...subLists(li.lists, indent, head !== marker)].join('\n');
+    })
+    .join('\n');
+}
+
+function indentLines(text: string, indent: string): string {
+  return text.replace(/^(?=.)/gm, indent);
+}
+
+/**
+ * Inline HTML -> markdown (bold/italic/code/links), used only when the
+ * importer's inline conversion reproduces the HTML exactly; otherwise the HTML
+ * is kept verbatim (markdown allows inline HTML).
+ */
+function inlineHtmlToMarkdown(html: string): string {
+  const md = html
+    .replace(/<strong>([^<]*)<\/strong>/g, '**$1**')
+    .replace(/<em>([^<]*)<\/em>/g, '*$1*')
+    .replace(/<strong>\*([^<*]*)\*<\/strong>/g, '***$1***')
+    .replace(/<del>([^<]*)<\/del>/g, '~~$1~~')
+    .replace(/<code>([^<`]*)<\/code>/g, (_m, code: string) =>
+      `\`${code.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')}\``)
+    .replace(/<a href="([^"()\s]+)">([^<\][]*)<\/a>/g, '[$2]($1)');
+  return inlineMarkdownToHtml(md) === html ? md : html;
 }
 
 function escapeAlt(alt: string): string {

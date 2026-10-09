@@ -12,6 +12,7 @@ import remarkGfm from 'remark-gfm';
 import remarkFrontmatter from 'remark-frontmatter';
 import { createPresentation, PresentationSchema, type Presentation } from '../../../types/presentation';
 import { LAYOUTS, type LayoutPreset, type Slide, type SlideElement } from '../../../types/slide';
+import { computeTotalFragments } from '../../fragments';
 
 // ============================================================================
 // Helpers
@@ -914,5 +915,98 @@ describe('migratePresentation', () => {
     const p = migratePresentation(null);
     expect(p.slides).toEqual([]);
     expect(PresentationSchema.safeParse(p).success).toBe(true);
+  });
+});
+
+describe('nested lists and ordered list start', () => {
+  const list = (items: string[], ordered: boolean, extra: Partial<SlideElement> = {}) =>
+    ({ id: id(), type: 'list', position: pos(1, 1), items, ordered, ...extra }) as SlideElement;
+
+  it('imports nested markdown lists (mixed types, start, inline formatting, 3 levels)', async () => {
+    const md = [
+      '3. Top **bold**',
+      '   - child [link](https://x)',
+      '     1. deep `code`',
+      '     2. deeper',
+      '   - sibling',
+      '4. Next',
+      '',
+      '   7. seven',
+    ].join('\n');
+    const p = await expectStableImport(md);
+    const el = p.slides[0].elements[0];
+    expect(el).toMatchObject({
+      type: 'list',
+      ordered: true,
+      start: 3,
+      items: [
+        'Top <strong>bold</strong><ul><li>child <a href="https://x">link</a><ol><li>deep <code>code</code></li><li>deeper</li></ol></li><li>sibling</li></ul>',
+        'Next<ol start="7"><li>seven</li></ol>',
+      ],
+    });
+    // Re-export writes real indented markdown, not HTML
+    expect(serializePresentation(p)).toContain(md);
+  });
+
+  // [items, exported as markdown (no HTML list tags)?]
+  const nestedSets: Array<[string[], boolean]> = [
+    [['a<ul><li>b</li></ul>'], true],
+    [['<strong>a</strong> <em>i</em><ol start="2"><li><code>x</code> [y]<ul><li><a href="https://z">z</a></li></ul></li><li>w</li></ol>', 'plain'], true],
+    [['<strong><em>both</em></strong><ul><li>c</li></ul>'], true],
+    [['<ul><li>empty parent</li></ul>'], true],
+    [['a<ul><li><u>raw html</u> &amp; entity</li></ul>'], true],
+    [['a<ul><li>b</li></ul><ol><li>c</li></ol>'], true],
+    // Non-canonical/odd markup must still round-trip (JSON fallback)
+    [['a<ul><li><p>wrapped</p></li></ul>'], false],
+    [['a<ul><li>2*3*4</li></ul>'], false],
+    [['a<ul><li>b</li></ul>trailing'], false],
+  ];
+  for (const [items, asMarkdown] of nestedSets) {
+    for (const ordered of [false, true]) {
+      it(`nested list (${ordered ? 'ordered' : 'unordered'}): ${JSON.stringify(items)}`, async () => {
+        const { md } = await expectLossless(deck([slide([list(items, ordered)])]));
+        if (asMarkdown) expect(md).not.toMatch(/<\/?(?:ul|ol|li)\b|"items"/);
+      });
+    }
+  }
+
+  it('exports canonical nested items as markdown with no HTML list tags', async () => {
+    const { md } = await expectLossless(
+      deck([slide([list(['<strong>a</strong><ol start="5"><li>b<ul><li>c</li></ul></li></ol>', 'd'], false)])]),
+    );
+    expect(md).not.toMatch(/<\/?(?:ul|ol|li)\b/);
+    expect(md).toContain('- **a**\n\n  5. b\n     - c\n- d');
+  });
+
+  it('round-trips ordered list start values', async () => {
+    for (const start of [0, 2, 10, 99]) {
+      const { md } = await expectLossless(deck([slide([list(['a', 'b'], true, { start })])]));
+      expect(md).toContain(`${start}. a\n${start + 1}. b`);
+      expect(md).not.toContain('"start"');
+    }
+  });
+
+  it('keeps start on an unordered list via the directive fallback', async () => {
+    const { md } = await expectLossless(deck([slide([list(['a'], false, { start: 3 })])]));
+    expect(md).toContain('"start":3');
+  });
+
+  it('treats code spans in nested items literally', async () => {
+    const p = await expectStableImport('- Use `<ul>` and `**x**`\n  - child');
+    expect((p.slides[0].elements[0] as { items: string[] }).items).toEqual([
+      'Use <code>&lt;ul&gt;</code> and <code>**x**</code><ul><li>child</li></ul>',
+    ]);
+    expect(serializePresentation(p)).toContain('- Use `<ul>` and `**x**`\n  - child');
+  });
+
+  it('round-trips nested items with several paragraphs (<br>)', async () => {
+    const { md } = await expectLossless(deck([slide([list(['a<ul><li>A<br>B</li></ul>'], false)])]));
+    expect(md).not.toContain('"items"');
+  });
+
+  it('keeps fragmentPerItem on nested lists (top-level items only)', async () => {
+    const el = list(['a<ul><li>a1</li><li>a2</li></ul>', 'b'], false, { fragment: 1, fragmentPerItem: true });
+    const { parsed } = await expectLossless(deck([slide([el])]));
+    expect(computeTotalFragments(parsed.slides[0])).toBe(2);
   });
 });

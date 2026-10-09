@@ -5,6 +5,7 @@ import {
   collapseBlockAlignment,
   serializeTextBody,
 } from './textAlign';
+import { normalizeListItem } from './listItems';
 
 /**
  * Convert Tiptap HTML output back to an updated slide.
@@ -40,12 +41,26 @@ export function tiptapToSlide(
   };
 }
 
+/** rel that Tiptap's Link extension adds to every link by default. */
+const TIPTAP_LINK_REL = 'noopener noreferrer nofollow';
+
 /**
  * Parse Tiptap HTML and extract content for the given element type.
  */
 function htmlToElement(html: string, original: SlideElement): SlideElement {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, 'text/html');
+  // Link normalization: Tiptap's Link extension stamps its default
+  // target="_blank" rel="noopener noreferrer nofollow" on every link. Only that
+  // exact default pair is removed, so stored links are a plain <a href> that
+  // exports as a markdown [text](url); ElementRenderer adds target/rel to
+  // external links at render time. Any other target/rel value is kept.
+  for (const a of Array.from(doc.querySelectorAll('a'))) {
+    if (a.getAttribute('target') === '_blank' && a.getAttribute('rel') === TIPTAP_LINK_REL) {
+      a.removeAttribute('target');
+      a.removeAttribute('rel');
+    }
+  }
 
   switch (original.type) {
     case 'heading': {
@@ -85,25 +100,35 @@ function htmlToElement(html: string, original: SlideElement): SlideElement {
       );
       const itemAligns: Array<string | undefined> = [];
       const items = topItems.map((li) => {
-        // Extract the text content (from <p> tags) and any nested lists separately
-        const parts: string[] = [];
+        // Extract the text content (from <p> tags; several are joined with
+        // <br>) and any nested lists separately
+        const paragraphs: string[] = [];
+        const lists: string[] = [];
         let itemAlign: string | undefined;
         for (const child of Array.from(li.children) as HTMLElement[]) {
           if (child.tagName === 'UL' || child.tagName === 'OL') {
-            parts.push(child.outerHTML);
+            lists.push(child.outerHTML);
           } else {
             itemAlign ??= normalizeTextAlign(child.style.textAlign) ?? '';
-            parts.push(child.innerHTML);
+            paragraphs.push(child.innerHTML);
           }
         }
         itemAligns.push(itemAlign || undefined);
-        return parts.join('').trim();
+        return normalizeListItem((paragraphs.join('<br>') + lists.join('')).trim());
       });
       const ordered = topList.tagName === 'OL';
+      const start = ordered ? parseInt(topList.getAttribute('start') ?? '', 10) : NaN;
+      const { start: _previousStart, ...rest } = original;
+      const updated = {
+        ...rest,
+        items,
+        ordered,
+        ...(Number.isInteger(start) && start >= 0 && start !== 1 && { start }),
+      };
       // Lists have one alignment for the whole element: use the majority
       // alignment of the items (ties go to the most recently changed value,
       // i.e. not the element's previous alignment)
-      return withElementTextAlign({ ...original, items, ordered }, majorityAlign(itemAligns, original));
+      return withElementTextAlign(updated, majorityAlign(itemAligns, original));
     }
 
     case 'code': {

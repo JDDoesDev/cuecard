@@ -5,6 +5,7 @@ import {
   hasBlockHtml,
   applyAlignToBlocks,
 } from './textAlign';
+import { splitListItem } from './listItems';
 
 /**
  * Convert a single slide element to an HTML string for Tiptap to parse.
@@ -65,19 +66,18 @@ export function elementToHTML(element: SlideElement): string {
 
     case 'list': {
       const tag = element.ordered ? 'ol' : 'ul';
+      const start = Number(element.start);
+      const startAttr = element.ordered && Number.isInteger(start) && start >= 0 && start !== 1
+        ? ` start="${start}"`
+        : '';
       const items = element.items
         .map((item) => {
-          // If item contains nested list HTML, separate the text from the nested list
-          const nestedListMatch = item.match(/^(.*?)(<[ou]l>[\s\S]*)$/i);
-          if (nestedListMatch) {
-            const text = nestedListMatch[1];
-            const nestedHtml = nestedListMatch[2];
-            return `<li><p${alignAttr}>${text}</p>${nestedHtml}</li>`;
-          }
-          return `<li><p${alignAttr}>${item}</p></li>`;
+          // Separate the item's own text from its nested sub-lists
+          const { text, nested } = splitListItem(item);
+          return `<li><p${alignAttr}>${text}</p>${nested}</li>`;
         })
         .join('');
-      return `<${tag}>${items}</${tag}>`;
+      return `<${tag}${startAttr}>${items}</${tag}>`;
     }
 
     case 'code':
