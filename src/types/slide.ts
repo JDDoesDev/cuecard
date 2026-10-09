@@ -22,6 +22,8 @@ export const ElementPositionSchema = z.object({
 // SlideElement Types (discriminated union by `type`)
 // ============================================================================
 
+export type TextAlign = 'left' | 'center' | 'right' | 'justify';
+
 export interface HeadingElement {
   id: string;
   type: 'heading';
@@ -32,6 +34,7 @@ export interface HeadingElement {
   lineHeight?: number;
   fontFamily?: string;
   verticalAlign?: 'top' | 'middle' | 'bottom';
+  textAlign?: TextAlign;
 }
 
 export interface TextElement {
@@ -43,6 +46,7 @@ export interface TextElement {
   lineHeight?: number;
   fontFamily?: string;
   verticalAlign?: 'top' | 'middle' | 'bottom';
+  textAlign?: TextAlign;
 }
 
 export interface ListElement {
@@ -56,6 +60,7 @@ export interface ListElement {
   lineHeight?: number;
   fontFamily?: string;
   verticalAlign?: 'top' | 'middle' | 'bottom';
+  textAlign?: TextAlign;
 }
 
 export interface CodeElement {
@@ -142,6 +147,7 @@ export type SlideElement =
 // SlideElement Zod Schemas
 // ============================================================================
 
+const TextAlignSchema = z.enum(['left', 'center', 'right', 'justify']).optional();
 const VerticalAlignSchema = z.enum(['top', 'middle', 'bottom']).optional();
 
 export const HeadingElementSchema = z.object({
@@ -154,6 +160,7 @@ export const HeadingElementSchema = z.object({
   lineHeight: z.number().optional(),
   fontFamily: z.string().optional(),
   verticalAlign: VerticalAlignSchema,
+  textAlign: TextAlignSchema,
 });
 
 export const TextElementSchema = z.object({
@@ -165,6 +172,7 @@ export const TextElementSchema = z.object({
   lineHeight: z.number().optional(),
   fontFamily: z.string().optional(),
   verticalAlign: VerticalAlignSchema,
+  textAlign: TextAlignSchema,
 });
 
 export const ListElementSchema = z.object({
@@ -178,6 +186,7 @@ export const ListElementSchema = z.object({
   lineHeight: z.number().optional(),
   fontFamily: z.string().optional(),
   verticalAlign: VerticalAlignSchema,
+  textAlign: TextAlignSchema,
 });
 
 export const CodeElementSchema = z.object({
@@ -198,6 +207,7 @@ export const ImageElementSchema = z.object({
   alt: z.string().optional(),
   objectFit: z.enum(['cover', 'contain']).optional(),
   cachedUrl: z.string().optional(),
+  cacheKey: z.string().optional(),
   fragment: z.number().optional(),
 });
 

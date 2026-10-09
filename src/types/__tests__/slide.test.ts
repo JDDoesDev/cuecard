@@ -367,7 +367,7 @@ describe('createPresentation', () => {
   it('produces valid presentation passing schema validation', () => {
     const presentation = createPresentation();
     expect(() => PresentationSchema.parse(presentation)).not.toThrow();
-    expect(presentation.schemaVersion).toBe('1.0');
+    expect(presentation.schemaVersion).toBe('1.1');
     expect(presentation.slides).toEqual([]);
   });
 
