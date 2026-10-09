@@ -207,3 +207,14 @@
   grid-column: 1 / -1;
   grid-row: 1 / -1;
 }
+
+.confirmBanner {
+  width: 100%;
+  padding: 6px 12px;
+  background: #5a4a10;
+  border: 1px solid #a08020;
+  border-radius: 4px;
+  color: #ffe9a0;
+  font-size: 0.875rem;
+  text-align: center;
+}

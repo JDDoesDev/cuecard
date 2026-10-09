@@ -31,7 +31,7 @@ export function Presentation({ aspectRatio = '16:9' }: PresentationProps) {
   const currentSlide = slides[currentSlideIndex];
 
   // Fragment-aware navigation
-  const { visibleFragment, next: nextSlide, prev: prevSlide } = useFragmentNav(
+  const { visibleFragment, next: nextSlide, prev: prevSlide, canNext, canPrev } = useFragmentNav(
     slides,
     currentSlideIndex,
     setCurrentSlide,
@@ -79,6 +79,8 @@ export function Presentation({ aspectRatio = '16:9' }: PresentationProps) {
         total={slideCount}
         onPrev={prevSlide}
         onNext={nextSlide}
+        canPrev={canPrev}
+        canNext={canNext}
         onFullscreen={toggleFullscreen}
         isFullscreen={isFullscreen}
       />

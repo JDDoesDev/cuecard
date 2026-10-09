@@ -1,23 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="default">
+  <!-- The editor UI always uses the default theme; the deck's theme is applied
+       only to slide containers (data-slide-container), so no pre-React script
+       must set the presentation theme on <html>. -->
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#4f46e5" />
     <title>Slide Framework</title>
-    <script>
-      // Prevent FOUC by initializing theme before React loads
-      (function() {
-        try {
-          const savedTheme = localStorage.getItem('fldc-preferred-theme');
-          if (savedTheme) {
-            document.documentElement.setAttribute('data-theme', savedTheme);
-          }
-        } catch (e) {
-          console.error('Failed to initialize theme:', e);
-        }
-      })();
-    </script>
   </head>
   <body>
     <div id="root"></div>

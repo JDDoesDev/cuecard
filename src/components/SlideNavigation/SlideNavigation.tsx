@@ -12,6 +12,10 @@ interface SlideNavigationProps {
   onNext: () => void;
   onFullscreen: () => void;
   isFullscreen: boolean;
+  /** Whether a previous step (fragment or slide) exists. Defaults to slide-index check. */
+  canPrev?: boolean;
+  /** Whether a next step (fragment or slide) exists. Defaults to slide-index check. */
+  canNext?: boolean;
 }
 
 /**
@@ -25,6 +29,8 @@ export function SlideNavigation({
   onNext,
   onFullscreen,
   isFullscreen,
+  canPrev,
+  canNext,
 }: SlideNavigationProps) {
   const [isVisible, setIsVisible] = useState(true);
 
@@ -49,8 +55,8 @@ export function SlideNavigation({
     };
   }, []);
 
-  const isFirst = current === 1;
-  const isLast = current === total;
+  const isFirst = canPrev === undefined ? current === 1 : !canPrev;
+  const isLast = canNext === undefined ? current === total : !canNext;
 
   return (
     <div className={styles.navigation} data-visible={isVisible}>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { getComputedThemeVariables } from '../../lib/theme/themeManager';
+import { getThemeVariables, customThemeId, isSafeThemeValue } from '../../lib/theme/themeManager';
 import { exportTheme, importTheme, saveCustomTheme, type CustomTheme } from '../../lib/theme/customThemeStorage';
+import { useTheme } from '../ThemeProvider/ThemeProvider';
 import styles from './ThemeImportExport.module.css';
 
 // ============================================================================
@@ -16,13 +17,20 @@ export function ThemeImportExport({ currentTheme = 'default', onThemeImported }:
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  const { customThemes } = useTheme();
+
   const handleExport = () => {
-    const currentVars = getComputedThemeVariables();
+    // Read the selected theme's actual values (probe element with that data-theme),
+    // not <html>, which always carries the editor's 'default' theme.
+    const currentVars = Object.fromEntries(
+      Object.entries(getThemeVariables(currentTheme)).filter(([, v]) => isSafeThemeValue(v)),
+    );
+    const custom = Object.values(customThemes).find((t) => customThemeId(t.name) === currentTheme);
 
     const theme: CustomTheme = {
-      name: `${currentTheme}-export`,
+      name: custom ? custom.name : `${currentTheme}-export`,
       version: 1,
-      base: currentTheme,
+      base: custom ? custom.base : currentTheme,
       overrides: currentVars,
     };
 

@@ -43,7 +43,12 @@ export interface OpenDualScreenResult {
  * converts the current tab to presenter view (notes, timer, controls).
  * IMPORTANT: Must be called directly in a click handler to avoid popup blockers.
  */
-export function openDualScreen(): OpenDualScreenResult {
+/**
+ * Open (or re-focus) the audience window. Reuses the named window, so calling
+ * it again from presenter view re-opens a closed audience window.
+ * Must be called from a user gesture to avoid popup blockers.
+ */
+export function openAudienceWindow(): OpenDualScreenResult {
   const audienceUrl = `${window.location.origin}${window.location.pathname}?mode=audience`;
 
   // Open audience window (speaker drags this to second monitor)
@@ -57,6 +62,13 @@ export function openDualScreen(): OpenDualScreenResult {
   if (!audienceWindow || audienceWindow.closed || typeof audienceWindow.closed === 'undefined') {
     return { success: false, error: 'popup-blocked' };
   }
+  audienceWindow.focus?.();
+  return { success: true };
+}
+
+export function openDualScreen(): OpenDualScreenResult {
+  const result = openAudienceWindow();
+  if (!result.success) return result;
 
   // Convert current tab to presenter mode
   window.location.search = '?mode=presenter';

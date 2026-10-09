@@ -1,19 +1,25 @@
 import { getLoadedFonts } from './fontLoader';
 
-// Built-in fonts shipped with the app
+// Built-in fonts shipped with the app (must match the @fontsource imports in src/styles/fonts.ts)
 export const BUILT_IN_FONTS = [
   'Inter',
   'Roboto',
-  'Playfair Display',
-  'Merriweather',
-  'Source Sans 3',
+  'Open Sans',
   'Lato',
   'Montserrat',
-  'Open Sans',
   'Poppins',
   'Raleway',
+  'Source Sans 3',
+  'Nunito',
+  'Work Sans',
+  'Oswald',
+  'Playfair Display',
+  'Merriweather',
+  'PT Serif',
+  'Libre Baskerville',
   'Fira Code',
   'JetBrains Mono',
+  'Source Code Pro',
 ];
 
 /**

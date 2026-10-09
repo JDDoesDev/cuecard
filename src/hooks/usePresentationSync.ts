@@ -1,182 +1,184 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   SyncMessage,
   SYNC_CHANNEL_NAME,
   SYNC_STORAGE_KEY,
+  SYNC_REQUEST_STORAGE_KEY,
+  SYNC_STALE_MS,
+  isSyncMessage,
+  shouldAcceptSyncMessage,
 } from '@/types/sync';
 
 // ============================================================================
 // usePresentationSync Hook
 // ============================================================================
+//
+// Protocol:
+// - Presenter broadcasts 'navigate' only when slide/fragment actually changes.
+// - Audience sends 'request-state' when it mounts (or its presentation id
+//   becomes known); the presenter replies with 'resync' carrying current state.
+//   This keeps late-joining / reloaded audience windows in sync without the
+//   presenter re-broadcasting periodically.
+// - Every message carries presentationId + timestamp. Receivers ignore
+//   messages for other presentations and messages older than the last one
+//   applied. Persisted state in localStorage is only restored when it belongs
+//   to the same presentation and is recent (SYNC_STALE_MS).
+
+export interface PresenterSyncState {
+  slideIndex: number;
+  fragmentIndex?: number;
+}
 
 export interface UsePresentationSyncOptions {
   role: 'presenter' | 'audience';
-  onNavigate: (slideIndex: number, fragmentIndex?: number) => void;
+  onNavigate?: (slideIndex: number, fragmentIndex?: number) => void;
   onEnd?: () => void;
   presentationId?: string;
+  /** Presenter only: returns current state, used to answer audience 'request-state'. */
+  getState?: () => PresenterSyncState;
+}
+
+function writeStorage(key: string, message: SyncMessage) {
+  try {
+    localStorage.setItem(key, JSON.stringify(message));
+  } catch (err) {
+    console.error('Failed to write sync message to localStorage:', err);
+  }
+}
+
+function parseMessage(raw: string | null): SyncMessage | null {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return isSyncMessage(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Identity of a message for de-duplication across transports. */
+function messageKey(message: SyncMessage): string {
+  const nav = message.type === 'navigate' || message.type === 'resync'
+    ? `:${message.slideIndex}:${message.fragmentIndex ?? ''}`
+    : '';
+  return `${message.type}:${message.presentationId ?? ''}:${message.timestamp}${nav}`;
 }
 
 export function usePresentationSync(options: UsePresentationSyncOptions) {
   const { role, presentationId } = options;
   const [isConnected, setIsConnected] = useState(false);
 
-  // Use ref to avoid stale closures
+  // Refs avoid stale closures and keep the returned callbacks stable
   const onNavigateRef = useRef(options.onNavigate);
   const onEndRef = useRef(options.onEnd);
+  const getStateRef = useRef(options.getState);
   const channelRef = useRef<BroadcastChannel | null>(null);
   const presentationIdRef = useRef(presentationId);
+  const lastTimestampRef = useRef(0);
+  /** Keys of recently handled messages: each message arrives via both BroadcastChannel and storage. */
+  const seenRef = useRef<string[]>([]);
 
-  // Update refs when options change
-  useEffect(() => {
-    onNavigateRef.current = options.onNavigate;
-    onEndRef.current = options.onEnd;
-    presentationIdRef.current = presentationId;
-  }, [options.onNavigate, options.onEnd, presentationId]);
+  onNavigateRef.current = options.onNavigate;
+  onEndRef.current = options.onEnd;
+  getStateRef.current = options.getState;
+  presentationIdRef.current = presentationId;
+
+  /** Send a message over BroadcastChannel and mirror it to localStorage. */
+  const send = useCallback((message: SyncMessage, storageKey: string) => {
+    // Presenter messages without a deck id would be rejected by audiences that
+    // already know theirs; the presenter rebroadcasts once the id is known.
+    if (message.type !== 'request-state' && !message.presentationId) return;
+    channelRef.current?.postMessage(message);
+    writeStorage(storageKey, message);
+  }, []);
+
+  const broadcastResync = useCallback((slideIndex: number, fragmentIndex?: number) => {
+    send(
+      { type: 'resync', slideIndex, fragmentIndex, timestamp: Date.now(), presentationId: presentationIdRef.current },
+      SYNC_STORAGE_KEY,
+    );
+  }, [send]);
+
+  const broadcastNavigate = useCallback((slideIndex: number, fragmentIndex?: number) => {
+    send(
+      { type: 'navigate', slideIndex, fragmentIndex, timestamp: Date.now(), presentationId: presentationIdRef.current },
+      SYNC_STORAGE_KEY,
+    );
+  }, [send]);
+
+  const broadcastEnd = useCallback(() => {
+    send({ type: 'end', timestamp: Date.now(), presentationId: presentationIdRef.current }, SYNC_STORAGE_KEY);
+  }, [send]);
 
   useEffect(() => {
     const hasBroadcastChannel = typeof BroadcastChannel !== 'undefined';
+    lastTimestampRef.current = 0;
 
-    // Handler for incoming sync messages
     const handleMessage = (message: SyncMessage) => {
-      // Only process messages if we're in audience mode (presenter is source of truth)
-      if (role !== 'audience') return;
+      const key = messageKey(message);
+      if (seenRef.current.includes(key)) return;
+      seenRef.current = [...seenRef.current.slice(-31), key];
 
-      // Filter by presentation ID if provided
-      if (presentationIdRef.current && message.presentationId !== presentationIdRef.current) {
+      if (role === 'presenter') {
+        // Presenter is the source of truth; it only answers state requests.
+        if (message.type !== 'request-state') return;
+        if (presentationIdRef.current && message.presentationId && message.presentationId !== presentationIdRef.current) return;
+        const state = getStateRef.current?.();
+        if (state) broadcastResync(state.slideIndex, state.fragmentIndex);
         return;
       }
 
-      // Process navigate and resync messages
+      if (message.type === 'request-state') return;
+      if (!shouldAcceptSyncMessage(message, presentationIdRef.current, lastTimestampRef.current)) return;
+      lastTimestampRef.current = message.timestamp;
+
       if (message.type === 'navigate' || message.type === 'resync') {
-        onNavigateRef.current(message.slideIndex, message.fragmentIndex);
+        onNavigateRef.current?.(message.slideIndex, message.fragmentIndex);
       } else if (message.type === 'end') {
         onEndRef.current?.();
       }
     };
 
-    // BroadcastChannel setup
     if (hasBroadcastChannel) {
       const channel = new BroadcastChannel(SYNC_CHANNEL_NAME);
       channelRef.current = channel;
-
       channel.onmessage = (event) => {
-        handleMessage(event.data as SyncMessage);
+        if (isSyncMessage(event.data)) handleMessage(event.data);
       };
-
-      setIsConnected(true);
     }
+    setIsConnected(true);
 
     // localStorage fallback (always set up, even if BroadcastChannel exists)
+    const listenKey = role === 'audience' ? SYNC_STORAGE_KEY : SYNC_REQUEST_STORAGE_KEY;
     const handleStorageEvent = (event: StorageEvent) => {
-      if (event.key !== SYNC_STORAGE_KEY) return;
-      if (!event.newValue) return;
-
-      try {
-        const message = JSON.parse(event.newValue) as SyncMessage;
-        handleMessage(message);
-      } catch (err) {
-        console.error('Failed to parse sync message from localStorage:', err);
-      }
+      if (event.key !== listenKey) return;
+      const message = parseMessage(event.newValue);
+      if (message) handleMessage(message);
     };
-
     window.addEventListener('storage', handleStorageEvent);
 
-    if (!hasBroadcastChannel) {
-      setIsConnected(true);
-    }
-
-    // On mount, read last sync message from localStorage to restore state after page refresh
-    if (role === 'audience') {
-      const lastMessage = localStorage.getItem(SYNC_STORAGE_KEY);
-      if (lastMessage) {
-        try {
-          const message = JSON.parse(lastMessage) as SyncMessage;
-          if (message.type === 'navigate' || message.type === 'resync') {
-            // Filter by presentation ID if provided
-            if (!presentationIdRef.current || message.presentationId === presentationIdRef.current) {
-              onNavigateRef.current(message.slideIndex, message.fragmentIndex);
-            }
-          }
-        } catch (err) {
-          console.error('Failed to restore sync state from localStorage:', err);
-        }
+    if (role === 'audience' && presentationId) {
+      // Restore last known state (e.g. after audience reload), only if it is
+      // for this presentation and recent; then ask the presenter for the
+      // authoritative current state.
+      const stored = parseMessage(localStorage.getItem(SYNC_STORAGE_KEY));
+      if (
+        stored &&
+        (stored.type === 'navigate' || stored.type === 'resync') &&
+        shouldAcceptSyncMessage(stored, presentationId, 0, Date.now(), SYNC_STALE_MS)
+      ) {
+        lastTimestampRef.current = stored.timestamp;
+        onNavigateRef.current?.(stored.slideIndex, stored.fragmentIndex);
       }
+      send({ type: 'request-state', timestamp: Date.now(), presentationId }, SYNC_REQUEST_STORAGE_KEY);
     }
 
-    // Cleanup
     return () => {
-      if (channelRef.current) {
-        channelRef.current.close();
-        channelRef.current = null;
-      }
+      channelRef.current?.close();
+      channelRef.current = null;
       window.removeEventListener('storage', handleStorageEvent);
     };
-  }, [role, presentationId]);
-
-  // Broadcast navigate message
-  const broadcastNavigate = (slideIndex: number, fragmentIndex?: number) => {
-    const message: SyncMessage = {
-      type: 'navigate',
-      slideIndex,
-      fragmentIndex,
-      timestamp: Date.now(),
-      presentationId: presentationIdRef.current,
-    };
-
-    // Send via BroadcastChannel if available
-    if (channelRef.current) {
-      channelRef.current.postMessage(message);
-    }
-
-    // Always write to localStorage (dual-write for fallback clients and resync)
-    try {
-      localStorage.setItem(SYNC_STORAGE_KEY, JSON.stringify(message));
-    } catch (err) {
-      console.error('Failed to write sync message to localStorage:', err);
-    }
-  };
-
-  // Broadcast resync message
-  const broadcastResync = (slideIndex: number, fragmentIndex?: number) => {
-    const message: SyncMessage = {
-      type: 'resync',
-      slideIndex,
-      fragmentIndex,
-      timestamp: Date.now(),
-      presentationId: presentationIdRef.current,
-    };
-
-    // Send via BroadcastChannel if available
-    if (channelRef.current) {
-      channelRef.current.postMessage(message);
-    }
-
-    // Always write to localStorage (dual-write for fallback clients and resync)
-    try {
-      localStorage.setItem(SYNC_STORAGE_KEY, JSON.stringify(message));
-    } catch (err) {
-      console.error('Failed to write sync message to localStorage:', err);
-    }
-  };
-
-  // Broadcast end message
-  const broadcastEnd = () => {
-    const message: SyncMessage = {
-      type: 'end',
-      timestamp: Date.now(),
-      presentationId: presentationIdRef.current,
-    };
-
-    if (channelRef.current) {
-      channelRef.current.postMessage(message);
-    }
-
-    try {
-      localStorage.setItem(SYNC_STORAGE_KEY, JSON.stringify(message));
-    } catch (err) {
-      console.error('Failed to write sync message to localStorage:', err);
-    }
-  };
+  }, [role, presentationId, send, broadcastResync]);
 
   return {
     isConnected,

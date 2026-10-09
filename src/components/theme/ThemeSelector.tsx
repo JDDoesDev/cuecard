@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { BUILT_IN_THEMES } from '../../lib/theme/builtInThemes';
-import { getCustomThemes, deleteCustomTheme, type CustomTheme } from '../../lib/theme/customThemeStorage';
-import { setTheme as setThemeManager, getTheme } from '../../lib/theme/themeManager';
+import { deleteCustomTheme, type CustomTheme } from '../../lib/theme/customThemeStorage';
+import { customThemeId } from '../../lib/theme/themeManager';
 import { useTheme } from '../ThemeProvider/ThemeProvider';
 import { ThemeCustomizer } from './ThemeCustomizer';
 import styles from './ThemeSelector.module.css';
@@ -11,28 +11,26 @@ import styles from './ThemeSelector.module.css';
 // ============================================================================
 
 export function ThemeSelector() {
-  const { theme, setTheme } = useTheme();
-  const [customThemes, setCustomThemes] = useState<Record<string, CustomTheme>>(getCustomThemes());
+  // Selecting a theme applies it to slides and stores it in presentation.theme
+  const { theme, setTheme, customThemes } = useTheme();
   const [showCustomizer, setShowCustomizer] = useState(false);
 
   const handleThemeSelect = (themeId: string) => {
-    setThemeManager(themeId);
-    setTheme(themeId as any);
+    setTheme(themeId);
   };
 
   const handleDeleteCustomTheme = (name: string) => {
+    const id = customThemeId(name);
     deleteCustomTheme(name);
-    setCustomThemes(getCustomThemes());
-
-    // If the deleted theme is currently active, switch to default
-    if (getTheme() === name) {
-      handleThemeSelect('default');
+    // If the deleted theme is currently active, switch to its base theme
+    if (theme === id) {
+      handleThemeSelect(customThemes[name]?.base ?? 'default');
     }
   };
 
-  const handleCustomThemeSaved = () => {
-    setCustomThemes(getCustomThemes());
+  const handleCustomThemeSaved = (saved: CustomTheme) => {
     setShowCustomizer(false);
+    handleThemeSelect(customThemeId(saved.name));
   };
 
   return (
@@ -75,8 +73,8 @@ export function ThemeSelector() {
         {Object.entries(customThemes).map(([name, customTheme]) => (
           <button
             key={name}
-            className={`${styles.card} ${theme === name ? styles.active : ''}`}
-            onClick={() => handleThemeSelect(name)}
+            className={`${styles.card} ${theme === customThemeId(name) ? styles.active : ''}`}
+            onClick={() => handleThemeSelect(customThemeId(name))}
           >
             <button
               className={styles.deleteButton}
@@ -107,7 +105,7 @@ export function ThemeSelector() {
               <div className={styles.name}>{customTheme.name}</div>
               <div className={styles.description}>Custom theme (based on {customTheme.base})</div>
             </div>
-            {theme === name && (
+            {theme === customThemeId(name) && (
               <div className={styles.checkmark}>✓</div>
             )}
           </button>

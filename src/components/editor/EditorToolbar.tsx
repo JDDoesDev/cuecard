@@ -3,9 +3,8 @@ import { usePresentationUndo } from '@/hooks/usePresentationUndo';
 import { usePresentationStore } from '@/hooks/usePresentationStore';
 import { useTheme } from '@/components/ThemeProvider/ThemeProvider';
 import { openDualScreen } from '@/hooks/usePresentationMode';
-import { BUILT_IN_THEMES } from '@/lib/theme/builtInThemes';
-import { setTheme as setThemeManager } from '@/lib/theme/themeManager';
-import { saveToFile, openFromFile, getFileName } from '@/lib/storage/fileStorage';
+import { ThemeOptions } from '@/components/theme/ThemeOptions';
+import { saveToFile, openFromFile, getFileName, formatValidationError } from '@/lib/storage/fileStorage';
 import { createPresentation } from '@/types/presentation';
 import { LAYOUTS, type LayoutPreset } from '@/types/slide';
 import { getAvailableFonts } from '@/lib/fonts/availableFonts';
@@ -108,7 +107,7 @@ export function EditorToolbar({
       }
     } catch (e) {
       console.error('Open failed:', e);
-      alert('Failed to open file. Make sure it is a valid FLDC presentation JSON.');
+      alert(`Could not open this file.\n\n${formatValidationError(e)}`);
     }
   }, [store]);
 
@@ -280,15 +279,12 @@ export function EditorToolbar({
             className={styles.themeSelect}
             value={theme}
             onChange={(e) => {
-              const newTheme = e.target.value as any;
-              setThemeManager(newTheme);
+              const newTheme = e.target.value;
               setTheme(newTheme);
             }}
             title="Editor theme"
           >
-            {BUILT_IN_THEMES.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
+            <ThemeOptions />
           </select>
           <button
             className={styles.button}

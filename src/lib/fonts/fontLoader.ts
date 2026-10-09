@@ -50,9 +50,12 @@ export async function loadGoogleFont(font: GoogleFont, variant: string = 'regula
   }
 
   // Get font URL from files object (force HTTPS - API returns HTTP URLs)
-  const fontUrl = font.files[variant]?.replace('http://', 'https://');
+  const fontUrl = font.files[variant]?.replace(/^http:\/\//, 'https://');
   if (!fontUrl) {
     throw new Error(`Variant ${variant} not available for font ${font.family}`);
+  }
+  if (!fontUrl.startsWith('https://') || !isSafeFontFamily(font.family)) {
+    throw new Error(`Refusing to load font ${font.family} from ${fontUrl}`);
   }
 
   try {
@@ -129,4 +132,73 @@ export function getLoadedFonts(): string[] {
   }
 
   return Array.from(families);
+}
+
+/** Font family names we are willing to inject into CSS / URLs. */
+export function isSafeFontFamily(family: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9 _-]{0,63}$/.test(family);
+}
+
+function injectFontFace(family: string, blob: Blob, variant: string) {
+  const blobUrl = URL.createObjectURL(blob);
+  const style = document.createElement('style');
+  style.textContent = `
+    @font-face {
+      font-family: '${family}';
+      src: url('${blobUrl}');
+      font-weight: ${variantToWeight(variant)};
+      font-style: ${variantToStyle(variant)};
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+const CACHED_VARIANTS = ['regular', '700', 'italic', '700italic'];
+
+/**
+ * Load a font previously downloaded by loadGoogleFont from the IndexedDB cache
+ * (works offline and in presenter/audience windows). Returns false if nothing
+ * is cached for this family.
+ */
+export async function loadCachedFont(family: string): Promise<boolean> {
+  if (!isSafeFontFamily(family)) return false;
+  let found = false;
+  for (const variant of CACHED_VARIANTS) {
+    const cacheKey = `font:${family}:${variant}`;
+    if (loadedFonts.has(cacheKey)) {
+      found = true;
+      continue;
+    }
+    const blob: Blob | undefined = await get(cacheKey);
+    if (!blob) continue;
+    injectFontFace(family, blob, variant);
+    loadedFonts.add(cacheKey);
+    found = true;
+  }
+  return found;
+}
+
+/**
+ * Load a font family via the Google Fonts CSS2 endpoint (HTTPS only, no API
+ * key needed). The service worker caches fonts.googleapis.com / fonts.gstatic.com
+ * responses for offline use.
+ */
+export function loadFontFromGoogleCss(family: string): void {
+  if (!isSafeFontFamily(family) || typeof document === 'undefined') return;
+  const cacheKey = `font:${family}:css2`;
+  if (loadedFonts.has(cacheKey)) return;
+  // The CSS2 API answers 400 when a requested axis/weight does not exist
+  // (e.g. Bebas Neue, Lobster have only 400), so try 400+700 first and fall
+  // back to the bare family (its default style) on error.
+  const familyParam = encodeURIComponent(family).replace(/%20/g, '+');
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.dataset.fldcFont = family;
+  link.onerror = () => {
+    link.onerror = null;
+    link.href = `https://fonts.googleapis.com/css2?family=${familyParam}&display=swap`;
+  };
+  link.href = `https://fonts.googleapis.com/css2?family=${familyParam}:wght@400;700&display=swap`;
+  document.head.appendChild(link);
+  loadedFonts.add(cacheKey);
 }

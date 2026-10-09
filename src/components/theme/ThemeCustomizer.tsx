@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
-import { getComputedThemeVariables, applyCustomTheme, clearCustomOverrides } from '../../lib/theme/themeManager';
+import { useState, useEffect, useMemo } from 'react';
+import { getThemeVariables, applyCustomTheme, clearCustomOverrides, customThemeId } from '../../lib/theme/themeManager';
 import { saveCustomTheme, type CustomTheme } from '../../lib/theme/customThemeStorage';
 import { getAvailableFonts } from '../../lib/fonts/availableFonts';
+import { useTheme } from '../ThemeProvider/ThemeProvider';
 import styles from './ThemeCustomizer.module.css';
 
 // ============================================================================
@@ -9,39 +10,70 @@ import styles from './ThemeCustomizer.module.css';
 // ============================================================================
 
 interface ThemeCustomizerProps {
+  /** Theme id currently applied to slides (built-in or custom-<slug>). */
   baseTheme?: string;
   onSave?: (theme: CustomTheme) => void;
   onCancel?: () => void;
 }
 
+const HEX_RE = /^#[0-9a-f]{6}$/i;
+
+/** <input type="color"> only accepts #rrggbb. */
+function toHex(value: string | undefined, fallback: string): string {
+  if (!value) return fallback;
+  const v = value.trim();
+  if (HEX_RE.test(v)) return v;
+  if (/^#[0-9a-f]{3}$/i.test(v)) return `#${v[1]}${v[1]}${v[2]}${v[2]}${v[3]}${v[3]}`;
+  const rgb = v.match(/^rgba?\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)/i);
+  if (rgb) return `#${[rgb[1], rgb[2], rgb[3]].map((n) => Number(n).toString(16).padStart(2, '0')).join('')}`;
+  return fallback;
+}
+
 export function ThemeCustomizer({ baseTheme = 'default', onSave, onCancel }: ThemeCustomizerProps) {
+  const { customThemes } = useTheme();
   const [themeName, setThemeName] = useState('');
-  const [overrides, setOverrides] = useState<Record<string, string>>({});
+  /** Only the values the user changed (applied on top of the base theme). */
+  const [changes, setChanges] = useState<Record<string, string>>({});
   const [showNameInput, setShowNameInput] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
   const [fontOptions, setFontOptions] = useState<string[]>(getAvailableFonts);
 
-  // Initialize overrides from current theme
+  // If the active theme is custom, extend its base and start from its overrides
+  const activeCustom = useMemo(
+    () => Object.values(customThemes).find((t) => customThemeId(t.name) === baseTheme),
+    [customThemes, baseTheme],
+  );
+  const rootBase = activeCustom?.base ?? baseTheme;
+  const inheritedOverrides = useMemo(() => activeCustom?.overrides ?? {}, [activeCustom]);
+
+  // Actual values of the selected theme (not the editor chrome's 'default')
+  const [themeValues, setThemeValues] = useState<Record<string, string>>({});
   useEffect(() => {
-    const currentVars = getComputedThemeVariables();
-    setOverrides(currentVars);
-  }, []);
+    clearCustomOverrides();
+    setThemeValues(getThemeVariables(baseTheme));
+    setChanges({});
+  }, [baseTheme]);
+
+  // Clear live preview when the customizer closes
+  useEffect(() => () => clearCustomOverrides(), []);
 
   // Refresh loaded Google Fonts list
   useEffect(() => {
     setFontOptions(getAvailableFonts());
   }, []);
 
-  const handleColorChange = (varName: string, value: string) => {
-    const newOverrides = { ...overrides, [varName]: value };
-    setOverrides(newOverrides);
-    applyCustomTheme(newOverrides);
+  const overrides = { ...themeValues, ...changes };
+
+  const applyChange = (varName: string, value: string) => {
+    const next = { ...changes, [varName]: value };
+    setChanges(next);
+    applyCustomTheme(next, baseTheme);
   };
 
+  const handleColorChange = (varName: string, value: string) => applyChange(varName, value);
+
   const handleFontChange = (varName: string, value: string) => {
-    const newOverrides = { ...overrides, [varName]: `'${value}', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif` };
-    setOverrides(newOverrides);
-    applyCustomTheme(newOverrides);
+    applyChange(varName, `'${value}', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`);
   };
 
   const handleSave = () => {
@@ -53,31 +85,35 @@ export function ThemeCustomizer({ baseTheme = 'default', onSave, onCancel }: The
     const customTheme: CustomTheme = {
       name: themeName.trim(),
       version: 1,
-      base: baseTheme,
-      overrides,
+      base: rootBase,
+      overrides: { ...inheritedOverrides, ...changes },
     };
 
-    saveCustomTheme(customTheme);
-    setSaveMessage(`Theme "${themeName}" saved successfully!`);
+    try {
+      saveCustomTheme(customTheme);
+    } catch (err) {
+      setSaveMessage(err instanceof Error ? err.message : 'Could not save theme');
+      return;
+    }
+    setSaveMessage(`Theme "${customTheme.name}" saved successfully!`);
     setShowNameInput(false);
     setThemeName('');
 
     setTimeout(() => {
       setSaveMessage('');
+      clearCustomOverrides();
       onSave?.(customTheme);
     }, 1500);
   };
 
   const handleReset = () => {
     clearCustomOverrides();
-    const currentVars = getComputedThemeVariables();
-    setOverrides(currentVars);
+    setChanges({});
   };
 
   const handleCancel = () => {
     clearCustomOverrides();
-    const currentVars = getComputedThemeVariables();
-    setOverrides(currentVars);
+    setChanges({});
     onCancel?.();
   };
 
@@ -97,7 +133,7 @@ export function ThemeCustomizer({ baseTheme = 'default', onSave, onCancel }: The
               <span className={styles.label}>Primary Background</span>
               <input
                 type="color"
-                value={overrides['--color-bg-primary'] || '#ffffff'}
+                value={toHex(overrides['--color-bg-primary'], '#ffffff')}
                 onChange={(e) => handleColorChange('--color-bg-primary', e.target.value)}
                 className={styles.colorInput}
               />
@@ -107,7 +143,7 @@ export function ThemeCustomizer({ baseTheme = 'default', onSave, onCancel }: The
               <span className={styles.label}>Secondary Background</span>
               <input
                 type="color"
-                value={overrides['--color-bg-secondary'] || '#f8f9fa'}
+                value={toHex(overrides['--color-bg-secondary'], '#f8f9fa')}
                 onChange={(e) => handleColorChange('--color-bg-secondary', e.target.value)}
                 className={styles.colorInput}
               />
@@ -117,7 +153,7 @@ export function ThemeCustomizer({ baseTheme = 'default', onSave, onCancel }: The
               <span className={styles.label}>Primary Text</span>
               <input
                 type="color"
-                value={overrides['--color-text-primary'] || '#1a1a2e'}
+                value={toHex(overrides['--color-text-primary'], '#1a1a2e')}
                 onChange={(e) => handleColorChange('--color-text-primary', e.target.value)}
                 className={styles.colorInput}
               />
@@ -127,7 +163,7 @@ export function ThemeCustomizer({ baseTheme = 'default', onSave, onCancel }: The
               <span className={styles.label}>Secondary Text</span>
               <input
                 type="color"
-                value={overrides['--color-text-secondary'] || '#4a4a6a'}
+                value={toHex(overrides['--color-text-secondary'], '#4a4a6a')}
                 onChange={(e) => handleColorChange('--color-text-secondary', e.target.value)}
                 className={styles.colorInput}
               />
@@ -137,7 +173,7 @@ export function ThemeCustomizer({ baseTheme = 'default', onSave, onCancel }: The
               <span className={styles.label}>Accent Color</span>
               <input
                 type="color"
-                value={overrides['--color-accent'] || '#0066cc'}
+                value={toHex(overrides['--color-accent'], '#0066cc')}
                 onChange={(e) => handleColorChange('--color-accent', e.target.value)}
                 className={styles.colorInput}
               />
@@ -147,7 +183,7 @@ export function ThemeCustomizer({ baseTheme = 'default', onSave, onCancel }: The
               <span className={styles.label}>Accent Hover</span>
               <input
                 type="color"
-                value={overrides['--color-accent-hover'] || '#0052a3'}
+                value={toHex(overrides['--color-accent-hover'], '#0052a3')}
                 onChange={(e) => handleColorChange('--color-accent-hover', e.target.value)}
                 className={styles.colorInput}
               />
@@ -157,7 +193,7 @@ export function ThemeCustomizer({ baseTheme = 'default', onSave, onCancel }: The
               <span className={styles.label}>Code Background</span>
               <input
                 type="color"
-                value={overrides['--color-code-bg'] || '#1e1e2e'}
+                value={toHex(overrides['--color-code-bg'], '#1e1e2e')}
                 onChange={(e) => handleColorChange('--color-code-bg', e.target.value)}
                 className={styles.colorInput}
               />
@@ -167,7 +203,7 @@ export function ThemeCustomizer({ baseTheme = 'default', onSave, onCancel }: The
               <span className={styles.label}>Border Color</span>
               <input
                 type="color"
-                value={overrides['--color-border'] || '#dee2e6'}
+                value={toHex(overrides['--color-border'], '#dee2e6')}
                 onChange={(e) => handleColorChange('--color-border', e.target.value)}
                 className={styles.colorInput}
               />
@@ -182,7 +218,7 @@ export function ThemeCustomizer({ baseTheme = 'default', onSave, onCancel }: The
             <label className={styles.field}>
               <span className={styles.label}>Heading Font</span>
               <select
-                value={overrides['--font-heading']?.match(/'([^']+)'/)?.[1] || 'Inter'}
+                value={overrides['--font-heading']?.match(/^\s*['"]?([^'",]+)/)?.[1]?.trim() || 'Inter'}
                 onChange={(e) => handleFontChange('--font-heading', e.target.value)}
                 className={styles.selectInput}
               >
@@ -197,7 +233,7 @@ export function ThemeCustomizer({ baseTheme = 'default', onSave, onCancel }: The
             <label className={styles.field}>
               <span className={styles.label}>Body Font</span>
               <select
-                value={overrides['--font-body']?.match(/'([^']+)'/)?.[1] || 'Roboto'}
+                value={overrides['--font-body']?.match(/^\s*['"]?([^'",]+)/)?.[1]?.trim() || 'Roboto'}
                 onChange={(e) => handleFontChange('--font-body', e.target.value)}
                 className={styles.selectInput}
               >
@@ -212,7 +248,7 @@ export function ThemeCustomizer({ baseTheme = 'default', onSave, onCancel }: The
             <label className={styles.field}>
               <span className={styles.label}>Code Font</span>
               <select
-                value={overrides['--font-code']?.match(/'([^']+)'/)?.[1] || 'Fira Code'}
+                value={overrides['--font-code']?.match(/^\s*['"]?([^'",]+)/)?.[1]?.trim() || 'Fira Code'}
                 onChange={(e) => handleFontChange('--font-code', e.target.value)}
                 className={styles.selectInput}
               >
