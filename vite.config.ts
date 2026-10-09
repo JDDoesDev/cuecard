@@ -10,8 +10,8 @@ export default defineConfig({
     VitePWA({
       registerType: 'prompt',
       manifest: {
-        name: 'FLDC Presentation Tool',
-        short_name: 'FLDC',
+        name: 'Cuecard',
+        short_name: 'Cuecard',
         description: 'Markdown-first presentation framework',
         theme_color: '#0066cc',
         background_color: '#ffffff',

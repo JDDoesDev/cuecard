@@ -2,8 +2,8 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect } from 'vitest';
-import { elementToHTML } from '../fldcToTiptap';
-import { tiptapToFldc } from '../tiptapToFldc';
+import { elementToHTML } from '../slideToTiptap';
+import { tiptapToSlide } from '../tiptapToSlide';
 import { getElementTextAlign, textAlignUpdates } from '../textAlign';
 import type { Slide, SlideElement } from '@/types/slide';
 
@@ -14,7 +14,7 @@ function slideWith(el: SlideElement): Slide {
 }
 
 function convert(html: string, el: SlideElement): SlideElement {
-  return tiptapToFldc(html, slideWith(el), 0).elements[0];
+  return tiptapToSlide(html, slideWith(el), 0).elements[0];
 }
 
 const heading = (extra: Record<string, unknown> = {}): SlideElement =>
@@ -24,7 +24,7 @@ const text = (content: string, extra: Record<string, unknown> = {}): SlideElemen
 const list = (items: string[], extra: Record<string, unknown> = {}): SlideElement =>
   ({ id: 'l', type: 'list', position: pos, items, ordered: false, ...extra }) as SlideElement;
 
-describe('tiptapToFldc keeps alignment', () => {
+describe('tiptapToSlide keeps alignment', () => {
   it('heading: centered heading stores textAlign on the element', () => {
     const result = convert('<h1 style="text-align: center">Title</h1>', heading());
     expect(getElementTextAlign(result)).toBe('center');
@@ -81,7 +81,7 @@ describe('tiptapToFldc keeps alignment', () => {
   });
 });
 
-describe('fldcToTiptap expands element alignment', () => {
+describe('slideToTiptap expands element alignment', () => {
   it('heading', () => {
     expect(elementToHTML(heading({ textAlign: 'center' }))).toBe('<h1 style="text-align: center">Title</h1>');
   });

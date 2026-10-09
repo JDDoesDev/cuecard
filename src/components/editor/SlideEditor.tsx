@@ -6,8 +6,8 @@ import {
   endHistoryBatch,
   coalesceHistory,
 } from '@/store/presentationStore';
-import { fldcToTiptap } from '@/lib/editor/fldcToTiptap';
-import { tiptapToFldc } from '@/lib/editor/tiptapToFldc';
+import { slideToTiptap } from '@/lib/editor/slideToTiptap';
+import { tiptapToSlide } from '@/lib/editor/tiptapToSlide';
 import {
   getElementTextAlign,
   getTextAlignState,
@@ -127,7 +127,7 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
       return '<p></p>';
     }
 
-    return fldcToTiptap(slide, editingElementIndex);
+    return slideToTiptap(slide, editingElementIndex);
   }, [slide, slideIndex, editingElementIndex]);
 
   // Handle editor updates for the editing element. Reads the slide fresh from
@@ -140,7 +140,7 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
       const idx = freshSlide.elements.findIndex((el) => el.id === editingElementId);
       if (idx === -1) return;
 
-      const updatedSlide = tiptapToFldc(html, freshSlide, idx);
+      const updatedSlide = tiptapToSlide(html, freshSlide, idx);
       const updatedJson = JSON.stringify(updatedSlide);
       if (updatedJson === JSON.stringify(freshSlide)) return;
       lastSentSlideJsonRef.current = updatedJson;

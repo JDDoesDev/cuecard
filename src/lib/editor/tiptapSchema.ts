@@ -11,7 +11,7 @@ import { FontSize } from './fontSizeExtension';
 import { applyEditorTextAlign } from './editorTextAlign';
 
 /**
- * Get Tiptap editor extensions with FLDC-specific configuration.
+ * Get Tiptap editor extensions with Cuecard-specific configuration.
  *
  * CRITICAL: Disables Tiptap's built-in history extension in favor of zundo
  * middleware for unified undo/redo across all editing operations.

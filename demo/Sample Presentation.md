@@ -1,12 +1,12 @@
 ---
-title: FLDC 2026 - Sample Presentation
+title: Sample Presentation
 theme: default
 schemaVersion: "1.0"
 ---
 
 <!-- transition: fade -->
 
-# Welcome to FLDC 2026
+# Welcome to Cuecard
 
 <!-- position: {"x":10,"y":30,"width":80,"height":20} -->
 

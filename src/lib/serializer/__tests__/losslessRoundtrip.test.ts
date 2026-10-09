@@ -865,8 +865,8 @@ describe('Demo files', () => {
     await expectStableImport(md);
   });
 
-  it('FLDC 2026 sample imports with positions and round-trips', async () => {
-    const md = readFileSync(resolve(demoDir, 'FLDC 2026 - Sample Presentation.md'), 'utf8');
+  it('Sample presentation imports with positions and round-trips', async () => {
+    const md = readFileSync(resolve(demoDir, 'Sample Presentation.md'), 'utf8');
     const { presentation, warnings } = await parsePresentationWithWarnings(md);
     expect(warnings).toEqual([]);
     expect(presentation.slides[0].elements[0].position).toEqual({ x: 10, y: 30, width: 80, height: 20 });
@@ -876,8 +876,8 @@ describe('Demo files', () => {
     await expectStableImport(md);
   });
 
-  it('Test Presentation.fldc.json migrates and round-trips losslessly', async () => {
-    const raw = JSON.parse(readFileSync(resolve(demoDir, 'Test Presentation.fldc.json'), 'utf8'));
+  it('Test Presentation.cuecard.json migrates and round-trips losslessly', async () => {
+    const raw = JSON.parse(readFileSync(resolve(demoDir, 'Test Presentation.cuecard.json'), 'utf8'));
     const p = migratePresentation(raw);
     expect(p.slides.length).toBe(raw.slides.length);
     await expectLossless(p);

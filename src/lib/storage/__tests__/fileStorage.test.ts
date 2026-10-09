@@ -73,7 +73,7 @@ describe('presentation file assets', () => {
   });
 
   it('opens legacy files without assets (demo file)', async () => {
-    const text = readFileSync(path.resolve(__dirname, '../../../../demo/Test Presentation.fldc.json'), 'utf8');
+    const text = readFileSync(path.resolve(__dirname, '../../../../demo/Test Presentation.cuecard.json'), 'utf8');
     const opened = await parsePresentationFile(text);
     expect(opened.title).toBe('Test Presentation');
     expect(opened.slides.length).toBeGreaterThan(0);

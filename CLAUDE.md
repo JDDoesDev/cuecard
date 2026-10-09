@@ -14,7 +14,7 @@ Package manager: **pnpm** (v10.28.0). Do not use npm or yarn.
 
 ## Architecture
 
-Presentation editor app: React 19 + Zustand + Vite + TypeScript. Three modes:
+Cuecard — presentation editor app: React 19 + Zustand + Vite + TypeScript. Three modes:
 
 - **Edit mode** — WYSIWYG slide editor with Tiptap rich text, drag-and-drop reordering (dnd-kit), element positioning, speaker notes
 - **Presenter mode** — fullscreen presentation with speaker notes, timer, next-slide preview; keyboard/click navigation
@@ -83,7 +83,7 @@ Slide containers (both `<Slide>` component and editor canvas `.slideCanvas`) use
 
 ## Testing
 
-Tests live alongside source in `__tests__/` directories. Vitest with jsdom environment. ~188 tests across parser, serializer, store, types, and fragments.
+Tests live alongside source in `__tests__/` directories. Vitest with jsdom environment. ~530 tests across parser, serializer (incl. lossless round-trip), store, editor, export, media, hooks, and themes.
 
 Zustand persist warnings in test output are expected (no localStorage in test env).
 

@@ -2,11 +2,11 @@
 // Cross-Tab Sync Types
 // ============================================================================
 
-export const SYNC_CHANNEL_NAME = 'fldc-presentation-sync';
+export const SYNC_CHANNEL_NAME = 'cuecard-presentation-sync';
 /** Presenter -> audience messages (also used to restore state after reload). */
-export const SYNC_STORAGE_KEY = 'fldc-sync-msg';
+export const SYNC_STORAGE_KEY = 'cuecard-sync-msg';
 /** Audience -> presenter messages (localStorage fallback when BroadcastChannel is unavailable). */
-export const SYNC_REQUEST_STORAGE_KEY = 'fldc-sync-request';
+export const SYNC_REQUEST_STORAGE_KEY = 'cuecard-sync-request';
 /** Persisted presenter state older than this is ignored on audience mount. */
 export const SYNC_STALE_MS = 6 * 60 * 60 * 1000;
 

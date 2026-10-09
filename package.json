@@ -1,8 +1,7 @@
 {
-  "name": "slide-framework",
+  "name": "cuecard",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Markdown-first presentation editor with presenter view, audience sync, and themes",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -11,9 +10,16 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "presentation",
+    "slides",
+    "slideshow",
+    "markdown",
+    "react",
+    "editor"
+  ],
+  "author": "JD Flynn",
+  "license": "MIT",
   "packageManager": "pnpm@10.28.0",
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -83,5 +89,6 @@
     "vite": "^7.3.1",
     "vitest": "^4.0.18",
     "workbox-window": "^7.4.0"
-  }
+  },
+  "private": true
 }

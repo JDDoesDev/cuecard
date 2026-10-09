@@ -49,8 +49,8 @@ export function hasFileSystemAccess(): boolean {
 const FILE_OPTIONS = {
   types: [
     {
-      description: 'FLDC Presentation',
-      accept: { 'application/json': ['.fldc.json', '.json'] },
+      description: 'Cuecard Presentation',
+      accept: { 'application/json': ['.cuecard.json', '.json'] },
     },
   ],
 };
@@ -83,7 +83,7 @@ export async function saveToFile(
   if (hasFileSystemAccess()) {
     try {
       const handle = await window.showSaveFilePicker({
-        suggestedName: sanitizeFileName(presentation.title) + '.fldc.json',
+        suggestedName: sanitizeFileName(presentation.title) + '.cuecard.json',
         ...FILE_OPTIONS,
       });
       const writable = await handle.createWritable();
@@ -104,7 +104,7 @@ export async function saveToFile(
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = sanitizeFileName(presentation.title) + '.fldc.json';
+  a.download = sanitizeFileName(presentation.title) + '.cuecard.json';
   a.click();
   URL.revokeObjectURL(url);
   return { success: true, fileName: a.download };
@@ -172,7 +172,7 @@ export async function openFromFile(): Promise<{
   return new Promise((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.json,.fldc.json';
+    input.accept = '.json,.cuecard.json';
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) {
@@ -278,7 +278,7 @@ export async function parsePresentationFile(text: string): Promise<Presentation>
   try {
     data = JSON.parse(text);
   } catch {
-    throw new PresentationFileError('This file is not valid JSON. Make sure you picked a .fldc.json presentation file.');
+    throw new PresentationFileError('This file is not valid JSON. Make sure you picked a .cuecard.json presentation file.');
   }
   if (!data || typeof data !== 'object' || Array.isArray(data)) {
     throw new PresentationFileError('This file does not contain a presentation.');

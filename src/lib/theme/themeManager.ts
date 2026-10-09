@@ -17,11 +17,11 @@
 
 import type { CustomTheme } from './customThemeStorage';
 
-const STORAGE_KEY = 'fldc-preferred-theme';
-const CUSTOM_STYLE_ID = 'fldc-custom-themes';
-const PREVIEW_STYLE_ID = 'fldc-theme-preview';
+const STORAGE_KEY = 'cuecard-preferred-theme';
+const CUSTOM_STYLE_ID = 'cuecard-custom-themes';
+const PREVIEW_STYLE_ID = 'cuecard-theme-preview';
 /** Dispatched on window whenever injected theme CSS (custom themes / preview) changes. */
-export const THEME_STYLES_CHANGED_EVENT = 'fldc-theme-styles-changed';
+export const THEME_STYLES_CHANGED_EVENT = 'cuecard-theme-styles-changed';
 
 function notifyStylesChanged() {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(THEME_STYLES_CHANGED_EVENT));

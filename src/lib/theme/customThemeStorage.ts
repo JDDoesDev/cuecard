@@ -5,9 +5,9 @@
 import { BUILT_IN_THEMES } from './builtInThemes';
 import { isThemeVariable, isSafeThemeValue } from './themeManager';
 
-const STORAGE_KEY = 'fldc-custom-themes';
+const STORAGE_KEY = 'cuecard-custom-themes';
 /** Fired on window when custom themes are saved/deleted in this document. */
-export const CUSTOM_THEMES_CHANGED_EVENT = 'fldc-custom-themes-changed';
+export const CUSTOM_THEMES_CHANGED_EVENT = 'cuecard-custom-themes-changed';
 export const CUSTOM_THEMES_STORAGE_KEY = STORAGE_KEY;
 
 export interface CustomTheme {

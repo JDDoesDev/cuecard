@@ -193,7 +193,7 @@ export function loadFontFromGoogleCss(family: string): void {
   const familyParam = encodeURIComponent(family).replace(/%20/g, '+');
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.dataset.fldcFont = family;
+  link.dataset.cuecardFont = family;
   link.onerror = () => {
     link.onerror = null;
     link.href = `https://fonts.googleapis.com/css2?family=${familyParam}&display=swap`;

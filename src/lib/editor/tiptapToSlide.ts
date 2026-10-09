@@ -7,18 +7,18 @@ import {
 } from './textAlign';
 
 /**
- * Convert Tiptap HTML output back to an updated FLDC slide.
+ * Convert Tiptap HTML output back to an updated slide.
  *
  * Uses DOMParser to reliably extract content from Tiptap's HTML,
  * then updates only the specified element while preserving all
  * other fields (id, position, layout, notes, etc.).
  *
  * @param html - HTML string from editor.getHTML()
- * @param originalSlide - Original FLDC slide
+ * @param originalSlide - Original slide
  * @param elementIndex - Which element was edited
- * @returns Updated FLDC slide
+ * @returns Updated slide
  */
-export function tiptapToFldc(
+export function tiptapToSlide(
   html: string,
   originalSlide: Slide,
   elementIndex: number = 0

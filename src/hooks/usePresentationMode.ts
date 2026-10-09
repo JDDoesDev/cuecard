@@ -54,7 +54,7 @@ export function openAudienceWindow(): OpenDualScreenResult {
   // Open audience window (speaker drags this to second monitor)
   const audienceWindow = window.open(
     audienceUrl,
-    'fldc-audience',
+    'cuecard-audience',
     'width=1200,height=800,popup'
   );
 

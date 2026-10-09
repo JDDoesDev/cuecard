@@ -1,15 +1,15 @@
 ---
-title: FLDC Feature Reference
+title: Cuecard Feature Reference
 theme: default
 fontHeading: Raleway
 fontBody: Source Sans 3
 ---
 
-# FLDC Feature Reference
+# Cuecard Feature Reference
 
 A complete guide to every markdown feature
 
-<!-- notes: This presentation demonstrates every feature available in FLDC. Use it as a template for building your own presentations. -->
+<!-- notes: This presentation demonstrates every feature available in Cuecard. Use it as a template for building your own presentations. -->
 <!-- transition: fade -->
 
 ---

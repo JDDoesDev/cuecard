@@ -7,17 +7,17 @@ import {
 } from './textAlign';
 
 /**
- * Convert a single FLDC element to an HTML string for Tiptap to parse.
+ * Convert a single slide element to an HTML string for Tiptap to parse.
  *
  * Tiptap natively handles HTML input via its ProseMirror DOMParser,
  * so we just need to wrap the element's content in the appropriate
  * HTML structure (heading, paragraph, list).
  *
- * @param slide - FLDC slide containing the element
+ * @param slide - slide containing the element
  * @param elementIndex - Which element to convert (default 0)
  * @returns HTML string that Tiptap can parse
  */
-export function fldcToTiptap(
+export function slideToTiptap(
   slide: Slide,
   elementIndex: number = 0
 ): string {

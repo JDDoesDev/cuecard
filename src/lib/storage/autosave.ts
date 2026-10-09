@@ -17,12 +17,12 @@ import type { PresentationState } from '@/store/presentationStore';
 import { writeToCurrentFile, getFileHandle } from './fileStorage';
 import { migrateLegacyTextContent } from '@/lib/editor/legacyTextContent';
 
-export const AUTOSAVE_KEY = 'fldc-presentation';
+export const AUTOSAVE_KEY = 'cuecard-presentation';
 export const AUTOSAVE_VERSION = 2;
 
 const WRITE_DELAY_MS = 500;
 const FILE_WRITE_DELAY_MS = 2000;
-const EDITOR_CHANNEL = 'fldc-editor-presence';
+const EDITOR_CHANNEL = 'cuecard-editor-presence';
 
 type PersistedState = { presentation: Presentation | null };
 

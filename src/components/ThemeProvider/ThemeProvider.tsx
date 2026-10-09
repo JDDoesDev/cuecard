@@ -53,7 +53,7 @@ interface ThemeContextValue {
   customThemes: Record<string, CustomTheme>;
 }
 
-const THEME_MIGRATION_KEY = 'fldc-theme-in-deck-migrated';
+const THEME_MIGRATION_KEY = 'cuecard-theme-in-deck-migrated';
 const BUILT_IN_IDS = new Set(BUILT_IN_THEMES.map((t) => t.id));
 
 // ============================================================================

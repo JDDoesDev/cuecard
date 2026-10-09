@@ -211,7 +211,7 @@ describe('exportToHTML', () => {
 
     it('embeds installed custom-<slug> themes via getCustomThemeCss', async () => {
       const style = document.createElement('style');
-      style.id = 'fldc-custom-themes';
+      style.id = 'cuecard-custom-themes';
       style.textContent = "[data-theme='custom-brand'] {\n  --color-accent: #123456;\n  --slide-bg: linear-gradient(90deg, #000 50%, #fff 50%);\n}";
       document.head.appendChild(style);
       try {

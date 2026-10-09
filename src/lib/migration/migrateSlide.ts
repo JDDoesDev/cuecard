@@ -315,7 +315,7 @@ function migrateAnySlide(raw: unknown, warnings: string[]): Slide {
 }
 
 /**
- * Migrate a raw presentation object (e.g. parsed `.fldc.json` or an older
+ * Migrate a raw presentation object (e.g. parsed `.cuecard.json` or an older
  * autosave) to the current shape:
  * - legacy layout-specific slides -> universal element model (`migrateSlide`)
  * - missing presentation/slide fields get defaults (ids, title, theme,

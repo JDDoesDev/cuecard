@@ -12,7 +12,7 @@ export interface GoogleFont {
   files: Record<string, string>;
 }
 
-const CACHE_KEY = 'fldc-google-fonts-list';
+const CACHE_KEY = 'cuecard-google-fonts-list';
 const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
 
 /**

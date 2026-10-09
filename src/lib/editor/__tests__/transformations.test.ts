@@ -2,8 +2,8 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect } from 'vitest';
-import { fldcToTiptap, elementToHTML } from '../fldcToTiptap';
-import { tiptapToFldc } from '../tiptapToFldc';
+import { slideToTiptap, elementToHTML } from '../slideToTiptap';
+import { tiptapToSlide } from '../tiptapToSlide';
 import type { Slide, SlideElement } from '@/types/slide';
 
 // ============================================================================
@@ -24,10 +24,10 @@ function makeSlide(elements: SlideElement[], layout: Slide['layout'] = 'freestyl
 }
 
 // ============================================================================
-// fldcToTiptap (element → HTML) Tests
+// slideToTiptap (element → HTML) Tests
 // ============================================================================
 
-describe('fldcToTiptap (element to HTML)', () => {
+describe('slideToTiptap (element to HTML)', () => {
   it('converts heading element to HTML heading', () => {
     const element: SlideElement = {
       id: sid(), type: 'heading',
@@ -119,23 +119,23 @@ describe('fldcToTiptap (element to HTML)', () => {
       { id: 'h1', type: 'heading', position: { x: 10, y: 30, width: 80, height: 20 }, content: 'Title', level: 1 },
     ]);
 
-    const html = fldcToTiptap(slide, 5);
+    const html = slideToTiptap(slide, 5);
 
     expect(html).toBe('<p></p>');
   });
 });
 
 // ============================================================================
-// tiptapToFldc (HTML → element) Tests
+// tiptapToSlide (HTML → element) Tests
 // ============================================================================
 
-describe('tiptapToFldc (HTML to element)', () => {
+describe('tiptapToSlide (HTML to element)', () => {
   it('extracts heading content from HTML', () => {
     const slide = makeSlide([
       { id: 'h1', type: 'heading', position: { x: 10, y: 30, width: 80, height: 20 }, content: 'Old', level: 1 },
     ]);
 
-    const result = tiptapToFldc('<h1>New Title</h1>', slide, 0);
+    const result = tiptapToSlide('<h1>New Title</h1>', slide, 0);
 
     if (result.elements[0].type === 'heading') {
       expect(result.elements[0].content).toBe('New Title');
@@ -148,7 +148,7 @@ describe('tiptapToFldc (HTML to element)', () => {
       { id: 'h1', type: 'heading', position: { x: 10, y: 30, width: 80, height: 20 }, content: 'Old', level: 2 },
     ]);
 
-    const result = tiptapToFldc('<h2>Hello <strong>bold</strong> world</h2>', slide, 0);
+    const result = tiptapToSlide('<h2>Hello <strong>bold</strong> world</h2>', slide, 0);
 
     if (result.elements[0].type === 'heading') {
       expect(result.elements[0].content).toBe('Hello <strong>bold</strong> world');
@@ -160,7 +160,7 @@ describe('tiptapToFldc (HTML to element)', () => {
       { id: 't1', type: 'text', position: { x: 15, y: 55, width: 70, height: 10 }, content: 'Old' },
     ]);
 
-    const result = tiptapToFldc('<p>Line 1</p><p>Line 2</p>', slide, 0);
+    const result = tiptapToSlide('<p>Line 1</p><p>Line 2</p>', slide, 0);
 
     if (result.elements[0].type === 'text') {
       expect(result.elements[0].content).toBe('<p>Line 1</p><p>Line 2</p>');
@@ -172,7 +172,7 @@ describe('tiptapToFldc (HTML to element)', () => {
       { id: 't1', type: 'text', position: { x: 15, y: 55, width: 70, height: 10 }, content: 'Old' },
     ]);
 
-    const result = tiptapToFldc('<p>Hello <em>italic</em> and <u>underline</u></p>', slide, 0);
+    const result = tiptapToSlide('<p>Hello <em>italic</em> and <u>underline</u></p>', slide, 0);
 
     if (result.elements[0].type === 'text') {
       expect(result.elements[0].content).toBe('<p>Hello <em>italic</em> and <u>underline</u></p>');
@@ -184,7 +184,7 @@ describe('tiptapToFldc (HTML to element)', () => {
       { id: 'l1', type: 'list', position: { x: 10, y: 25, width: 80, height: 70 }, items: ['Old'], ordered: false },
     ]);
 
-    const result = tiptapToFldc('<ul><li><p>Item A</p></li><li><p>Item B</p></li></ul>', slide, 0);
+    const result = tiptapToSlide('<ul><li><p>Item A</p></li><li><p>Item B</p></li></ul>', slide, 0);
 
     if (result.elements[0].type === 'list') {
       expect(result.elements[0].items).toEqual(['Item A', 'Item B']);
@@ -197,7 +197,7 @@ describe('tiptapToFldc (HTML to element)', () => {
       { id: 'l1', type: 'list', position: { x: 10, y: 25, width: 80, height: 70 }, items: ['Old'], ordered: false },
     ]);
 
-    const result = tiptapToFldc('<ol><li><p>First</p></li><li><p>Second</p></li></ol>', slide, 0);
+    const result = tiptapToSlide('<ol><li><p>First</p></li><li><p>Second</p></li></ol>', slide, 0);
 
     if (result.elements[0].type === 'list') {
       expect(result.elements[0].ordered).toBe(true);
@@ -209,7 +209,7 @@ describe('tiptapToFldc (HTML to element)', () => {
       { id: 'pos-test', type: 'heading', position: { x: 5, y: 5, width: 90, height: 12 }, content: 'Title', level: 1 },
     ]);
 
-    const result = tiptapToFldc('<h1>New</h1>', slide, 0);
+    const result = tiptapToSlide('<h1>New</h1>', slide, 0);
 
     expect(result.elements[0].id).toBe('pos-test');
     expect(result.elements[0].position).toEqual({ x: 5, y: 5, width: 90, height: 12 });
@@ -221,7 +221,7 @@ describe('tiptapToFldc (HTML to element)', () => {
       { id: 't1', type: 'text', position: { x: 15, y: 55, width: 70, height: 10 }, content: 'Subtitle' },
     ], 'title');
 
-    const result = tiptapToFldc('<h1>New Title</h1>', slide, 0);
+    const result = tiptapToSlide('<h1>New Title</h1>', slide, 0);
 
     if (result.elements[0].type === 'heading') {
       expect(result.elements[0].content).toBe('New Title');
@@ -236,7 +236,7 @@ describe('tiptapToFldc (HTML to element)', () => {
       { id: 'h1', type: 'heading', position: { x: 10, y: 30, width: 80, height: 20 }, content: 'Title', level: 1 },
     ]);
 
-    const result = tiptapToFldc('<h1>New</h1>', slide, 5);
+    const result = tiptapToSlide('<h1>New</h1>', slide, 5);
 
     expect(result).toEqual(slide);
   });
@@ -257,7 +257,7 @@ describe('Metadata preservation', () => {
       ],
     };
 
-    const result = tiptapToFldc('<h1>Test</h1>', slide, 0);
+    const result = tiptapToSlide('<h1>Test</h1>', slide, 0);
 
     expect(result.id).toBe('meta-test');
     expect(result.layout).toBe('title');
@@ -275,7 +275,7 @@ describe('Metadata preservation', () => {
       notes: 'Important speaker notes',
     };
 
-    const result = tiptapToFldc('<h1>Test</h1>', slide, 0);
+    const result = tiptapToSlide('<h1>Test</h1>', slide, 0);
 
     expect(result.notes).toBe('Important speaker notes');
   });

@@ -1,6 +1,6 @@
-# FLDC 2026
+# Cuecard
 
-A markdown-first presentation app built with React, TypeScript, and Zustand.
+A markdown-first presentation editor: write slides in markdown or build them visually, then present with a speaker view, synced audience window, themes and fragment animations. Decks export to markdown, a self-contained HTML file, or PDF.
 
 ## Getting Started
 
@@ -276,3 +276,7 @@ Click **Fonts** to browse and load Google Fonts.
 - react-syntax-highlighter (code blocks)
 - unified/remark (markdown parsing/serialization)
 - Vitest (testing)
+
+## License
+
+[MIT](LICENSE) © 2026 JD Flynn

@@ -9,8 +9,8 @@ import type { SlideElement, HeadingElement, TextElement, ListElement } from '@/t
  * - Text elements may additionally carry per-paragraph alignment inside their
  *   HTML content (`<p style="text-align: …">`) when paragraphs are mixed.
  *
- * Tiptap (TextAlign extension) works per block; tiptapToFldc collapses a
- * uniform alignment into the element field and fldcToTiptap expands it again.
+ * Tiptap (TextAlign extension) works per block; tiptapToSlide collapses a
+ * uniform alignment into the element field and slideToTiptap expands it again.
  */
 
 export type TextAlignValue = 'left' | 'center' | 'right' | 'justify';

@@ -41,7 +41,7 @@ function AppContent() {
     // (the editor window's session flag would look like a crash to them).
     if (presentationMode !== 'edit') return;
 
-    const SESSION_KEY = 'fldc-session-active';
+    const SESSION_KEY = 'cuecard-session-active';
     const hadSavedData = localStorage.getItem(AUTOSAVE_KEY) !== null;
     const previousSessionCrashed = localStorage.getItem(SESSION_KEY) === '1';
 
