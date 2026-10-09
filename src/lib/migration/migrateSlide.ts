@@ -1,6 +1,7 @@
 import type {
   Slide,
   SlideElement,
+  LayoutPreset,
   LegacySlide,
   LegacyTitleSlide,
   LegacyTwoColumnSlide,
@@ -10,6 +11,9 @@ import type {
   LegacyMediaAnywhereSlide,
   LegacyFreestyleSlide,
 } from '@/types/slide';
+import { LAYOUTS } from '@/types/slide';
+import { CURRENT_SCHEMA_VERSION, type Presentation } from '@/types/presentation';
+import { migrateLegacyTextContent } from '@/lib/editor/legacyTextContent';
 
 /**
  * Migrate a legacy slide (discriminated union with layout-specific fields)
@@ -220,19 +224,20 @@ function migrateMediaAnywhereSlide(old: LegacyMediaAnywhereSlide): Slide {
     },
   ];
 
-  if (old.media.type === 'video') {
+  const media = old.media ?? { url: '', type: 'image', position: { x: 54, y: 12, width: 34, height: 56 } };
+  if (media.type === 'video') {
     elements.push({
       id: crypto.randomUUID(),
       type: 'video',
-      position: old.media.position,
-      url: old.media.url,
+      position: media.position,
+      url: media.url,
     });
   } else {
     elements.push({
       id: crypto.randomUUID(),
       type: 'image',
-      position: old.media.position,
-      url: old.media.url,
+      position: media.position,
+      url: media.url,
     });
   }
 
@@ -260,4 +265,101 @@ function migrateFreestyleSlide(old: LegacyFreestyleSlide): Slide {
     elements,
     ...(old.notes ? { notes: old.notes } : {}),
   };
+}
+
+// ============================================================================
+// Presentation-level migration
+// ============================================================================
+
+const TRANSITIONS = ['fade', 'slide', 'zoom', 'none'] as const;
+const ASPECT_RATIOS = ['16:9', '4:3', '16:10'] as const;
+
+/** True for pre-universal-element slides (layout-specific fields, no `elements` array). */
+export function isLegacySlide(slide: unknown): boolean {
+  return !!slide && typeof slide === 'object' && !Array.isArray((slide as { elements?: unknown }).elements);
+}
+
+function isIsoDate(value: unknown): value is string {
+  return typeof value === 'string' && !Number.isNaN(Date.parse(value));
+}
+
+function migrateAnySlide(raw: unknown, warnings: string[]): Slide {
+  const input = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  let slide: Slide;
+  if (isLegacySlide(input) && (LAYOUTS as readonly string[]).includes(input.layout as string) && input.layout !== 'blank') {
+    slide = migrateSlide({ ...input, transition: input.transition ?? 'none' } as unknown as LegacySlide);
+  } else {
+    slide = {
+      id: input.id as string,
+      layout: input.layout as LayoutPreset,
+      transition: input.transition as Slide['transition'],
+      elements: Array.isArray(input.elements) ? (input.elements as SlideElement[]) : [],
+      ...(typeof input.notes === 'string' && input.notes ? { notes: input.notes } : {}),
+    };
+  }
+
+  if (!(LAYOUTS as readonly string[]).includes(slide.layout)) {
+    warnings.push(`Unknown layout "${String(slide.layout)}" replaced with freestyle.`);
+    slide.layout = 'freestyle';
+  }
+  if (!(TRANSITIONS as readonly string[]).includes(slide.transition)) slide.transition = 'none';
+  if (typeof slide.id !== 'string' || !slide.id) slide.id = crypto.randomUUID();
+
+  // Elements are NOT repaired here: invalid content must surface in the
+  // caller's PresentationSchema validation. Only missing ids are filled.
+  slide.elements = slide.elements.map((el) =>
+    el && typeof el === 'object' && !(el as { id?: unknown }).id ? { ...el, id: crypto.randomUUID() } : el,
+  );
+
+  return slide;
+}
+
+/**
+ * Migrate a raw presentation object (e.g. parsed `.fldc.json` or an older
+ * autosave) to the current shape:
+ * - legacy layout-specific slides -> universal element model (`migrateSlide`)
+ * - missing presentation/slide fields get defaults (ids, title, theme,
+ *   transition, timestamps); unknown layouts become 'freestyle'
+ * - unknown aspectRatio / non-object metadata are dropped
+ *
+ * Elements are passed through untouched (apart from missing ids), so the
+ * result is NOT guaranteed to be valid: callers should validate it with
+ * `PresentationSchema.safeParse` and report errors. Never throws.
+ */
+export function migratePresentation(raw: unknown, warnings: string[] = []): Presentation {
+  const input = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const now = new Date().toISOString();
+  const slides = Array.isArray(input.slides) ? input.slides.map((s) => migrateAnySlide(s, warnings)) : [];
+
+  // Decks before 1.1 rendered every newline in text content as a paragraph break
+  const legacyText = typeof input.schemaVersion !== 'string' || input.schemaVersion === '1.0';
+  if (legacyText) {
+    for (const slide of slides) {
+      slide.elements = slide.elements.map((el) =>
+        el.type === 'text' && typeof el.content === 'string'
+          ? { ...el, content: migrateLegacyTextContent(el.content) }
+          : el
+      );
+    }
+  }
+
+  const presentation: Presentation = {
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    id: typeof input.id === 'string' && input.id ? input.id : crypto.randomUUID(),
+    title: typeof input.title === 'string' ? input.title : 'Untitled Presentation',
+    theme: typeof input.theme === 'string' && input.theme ? input.theme : 'default',
+    slides,
+    createdAt: isIsoDate(input.createdAt) ? input.createdAt : now,
+    updatedAt: isIsoDate(input.updatedAt) ? input.updatedAt : now,
+  };
+  if (typeof input.fontHeading === 'string' && input.fontHeading) presentation.fontHeading = input.fontHeading;
+  if (typeof input.fontBody === 'string' && input.fontBody) presentation.fontBody = input.fontBody;
+  if ((ASPECT_RATIOS as readonly unknown[]).includes(input.aspectRatio)) {
+    presentation.aspectRatio = input.aspectRatio as Presentation['aspectRatio'];
+  }
+  if (input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata)) {
+    presentation.metadata = input.metadata as Record<string, unknown>;
+  }
+
+  return presentation;
 }

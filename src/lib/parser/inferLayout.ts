@@ -1,6 +1,20 @@
 import type { Content } from 'mdast';
-import type { LayoutPreset, SlideElement } from '@/types/slide';
-import { LAYOUTS } from '@/types/slide';
+import type { z } from 'zod';
+import type { ElementPosition, LayoutPreset, SlideElement } from '@/types/slide';
+import {
+  LAYOUTS,
+  ElementPositionSchema,
+  HeadingElementSchema,
+  TextElementSchema,
+  ListElementSchema,
+  CodeElementSchema,
+  ImageElementSchema,
+  VideoElementSchema,
+  RectangleElementSchema,
+  CircleElementSchema,
+  LineElementSchema,
+  HtmlElementSchema,
+} from '@/types/slide';
 
 /**
  * Layout inference result containing the detected layout type and elements array
@@ -11,617 +25,646 @@ export interface LayoutInference {
 }
 
 /**
- * Infers the slide layout from an array of mdast nodes using heuristics,
- * and creates positioned elements using preset defaults.
+ * A unit of slide content produced by the slide splitter (remarkSlidePlugin).
  *
+ * - `node`: a plain markdown node (heuristic import); legacy `fragment` /
+ *   `position` directives are attached to it.
+ * - `segment`: content introduced by an `<!-- element: {...} -->` directive
+ *   (lossless app export). `nodes` holds the single body node (if any) and
+ *   `body` its verbatim markdown source; `extra` holds any further nodes
+ *   before the next directive (imported as separate auto-positioned elements).
+ * - `shape`: legacy `<!-- shape: {...} -->` directive.
+ * - `column-break`: legacy `<!-- column-break -->` marker.
+ */
+export type SlideItem =
+  | { kind: 'node'; node: Content; fragment?: number; fragmentPerItem?: boolean; position?: ElementPosition }
+  | { kind: 'shape'; data: Record<string, unknown>; fragment?: number; position?: ElementPosition }
+  | { kind: 'segment'; props: Record<string, unknown> | null; nodes: Content[]; body: string; extra: Content[] }
+  | { kind: 'column-break' };
+
+interface Draft {
+  el: SlideElement;
+  /** True when the element carries an explicit position (directive). */
+  placed: boolean;
+  column: 'left' | 'right';
+}
+
+type ElementType = SlideElement['type'];
+
+const ELEMENT_SCHEMAS: Record<ElementType, z.ZodObject<any>> = {
+  heading: HeadingElementSchema,
+  text: TextElementSchema,
+  list: ListElementSchema,
+  code: CodeElementSchema,
+  image: ImageElementSchema,
+  video: VideoElementSchema,
+  rectangle: RectangleElementSchema,
+  circle: CircleElementSchema,
+  line: LineElementSchema,
+  html: HtmlElementSchema,
+};
+
+const REQUIRED_DEFAULTS: Record<ElementType, Record<string, unknown>> = {
+  heading: { content: '', level: 1 },
+  text: { content: '' },
+  list: { items: [], ordered: false },
+  code: { code: '', language: 'text' },
+  image: { url: '' },
+  video: { url: '' },
+  rectangle: {},
+  circle: {},
+  line: {},
+  html: { htmlContent: '' },
+};
+
+const PLACEHOLDER_POSITION: ElementPosition = { x: 0, y: 0, width: 0, height: 0 };
+
+export function isElementType(type: unknown): type is ElementType {
+  return typeof type === 'string' && Object.hasOwn(ELEMENT_SCHEMAS, type);
+}
+
+export function isValidLayout(layout: unknown): layout is LayoutPreset {
+  return typeof layout === 'string' && (LAYOUTS as readonly string[]).includes(layout);
+}
+
+export function parsePosition(value: unknown): ElementPosition | undefined {
+  const result = ElementPositionSchema.safeParse(value);
+  if (!result.success) return undefined;
+  const p = result.data;
+  if (![p.x, p.y, p.width, p.height].every(Number.isFinite)) return undefined;
+  return { x: p.x, y: p.y, width: p.width, height: p.height };
+}
+
+// ============================================================================
+// Public API
+// ============================================================================
+
+/**
+ * Convenience wrapper: infer layout + elements for plain mdast nodes.
+ *
+ * @param nodes - mdast nodes for the slide (directive comments already removed)
+ * @param source - the markdown source the nodes were parsed from (for verbatim text)
+ * @param explicitLayout - optional explicit layout from `<!-- layout: X -->`
+ */
+export function inferLayout(nodes: Content[], source = '', explicitLayout?: string): LayoutInference {
+  const items: SlideItem[] = nodes.map((node) => ({ kind: 'node', node }));
+  return buildSlideElements(items, explicitLayout, source, []);
+}
+
+/**
+ * Turn slide items into positioned elements.
+ *
+ * Principles:
+ * - Content is NEVER dropped and document order is preserved.
+ * - The layout only decides default positions for elements that have no
+ *   explicit position.
+ */
+export function buildSlideElements(
+  items: SlideItem[],
+  explicitLayout: string | undefined,
+  source: string,
+  warnings: string[],
+): LayoutInference {
+  const drafts: Draft[] = [];
+  let column: 'left' | 'right' = 'left';
+  let hasColumnBreak = false;
+
+  for (const item of items) {
+    let produced: Draft[] = [];
+    switch (item.kind) {
+      case 'column-break':
+        hasColumnBreak = true;
+        column = 'right';
+        continue;
+      case 'segment':
+        produced = segmentToDrafts(item, source, warnings);
+        break;
+      case 'shape': {
+        const el = finalizeElement({ ...item.data }, warnings);
+        produced = [{ el, placed: false, column }];
+        applyLegacyData(produced, item.fragment, undefined, item.position ?? parsePosition(item.data.position));
+        break;
+      }
+      case 'node':
+        produced = nodeToElements(item.node, source).map((el) => ({ el, placed: false, column }));
+        applyLegacyData(produced, item.fragment, item.fragmentPerItem, item.position);
+        break;
+    }
+    for (const d of produced) d.column = column;
+    drafts.push(...produced);
+  }
+
+  let layout: LayoutPreset;
+  if (explicitLayout !== undefined && isValidLayout(explicitLayout)) {
+    layout = explicitLayout;
+  } else {
+    layout = inferLayoutType(drafts, hasColumnBreak);
+  }
+
+  assignPositions(layout, drafts, hasColumnBreak);
+
+  return { layout, elements: drafts.map((d) => d.el) };
+}
+
+function applyLegacyData(
+  drafts: Draft[],
+  fragment: number | undefined,
+  fragmentPerItem: boolean | undefined,
+  position: ElementPosition | undefined,
+): void {
+  const first = drafts[0];
+  if (!first) return;
+  if (fragment !== undefined) first.el.fragment = fragment;
+  if (fragmentPerItem && first.el.type === 'list') first.el.fragmentPerItem = true;
+  if (position) {
+    first.el.position = position;
+    first.placed = true;
+  }
+}
+
+// ============================================================================
+// Layout heuristics
+// ============================================================================
+
+/**
  * Heuristic rules (in order):
  * 0. Column-break marker present -> 'two-column'
- * 1. H1 only or H1 + single paragraph -> 'title'
- * 2. H1/H2 + list -> 'title-list'
- * 3. Code block present -> 'code-block'
- * 4. Single image, no other content -> 'full-bleed-media'
- * 5. Image + text content -> 'media-anywhere'
+ * 1. Code block present -> 'code-block'
+ * 2. Single image/video, no other content -> 'full-bleed-media'
+ * 3. Image/video + other content -> 'media-anywhere'
+ * 4. Heading + list -> 'title-list'
+ * 5. Heading -> 'title'
  * 6. Default fallback -> 'freestyle'
- *
- * @param nodes - mdast nodes for the slide
- * @param positionData - extracted position data from HTML comments
- * @param explicitLayout - optional explicit layout from `<!-- layout: X -->` directive
  */
-export function inferLayout(nodes: Content[], positionData: any[] = [], explicitLayout?: string): LayoutInference {
-  // If an explicit layout is provided and valid, use it directly
-  if (explicitLayout && (LAYOUTS as readonly string[]).includes(explicitLayout)) {
-    return buildElementsForLayout(explicitLayout as LayoutPreset, nodes, positionData);
-  }
-  if (nodes.length === 0) {
-    return { layout: 'freestyle', elements: [] };
-  }
-
-  // Check for two-column marker first
-  const columnBreakIndex = nodes.findIndex(
-    (n) => n.type === 'html' && (n as any).value?.includes('<!-- column-break -->')
-  );
-
-  if (columnBreakIndex !== -1) {
-    return inferTwoColumn(nodes, columnBreakIndex, positionData);
-  }
-
-  // Count node types
-  const headings = nodes.filter((n) => n.type === 'heading');
-  const lists = nodes.filter((n) => n.type === 'list');
-  const codeBlocks = nodes.filter((n) => n.type === 'code');
-  const images = nodes.filter((n) => n.type === 'paragraph' && n.children?.some((c) => c.type === 'image'));
-  const paragraphs = nodes.filter((n) => n.type === 'paragraph');
-
-  // Rule 3: Code block present -> 'code-block'
-  if (codeBlocks.length > 0) {
-    return inferCodeBlock(nodes, headings, codeBlocks, paragraphs, positionData);
-  }
-
-  // Rule 4: Single image, no other content -> 'full-bleed-media'
-  if (images.length === 1 && nodes.length === 1) {
-    const imageNode = findFirstImage(nodes[0]);
-    if (imageNode) {
-      return inferFullBleedMedia(imageNode, positionData, nodes[0]);
-    }
-  }
-
-  // Rule 5: Image + other content -> 'media-anywhere'
-  if (images.length > 0) {
-    const imageParagraph = nodes.find((n) => n.type === 'paragraph' && n.children?.some((c: any) => c.type === 'image'));
-    const imageNode = findFirstImage(imageParagraph);
-    const contentNodes = nodes.filter((n) => n.type !== 'paragraph' || !n.children?.some((c: any) => c.type === 'image'));
-
-    if (imageNode) {
-      return inferMediaAnywhere(contentNodes, imageNode, positionData, imageParagraph);
-    }
-  }
-
-  // Rule 2: H1/H2 + list -> 'title-list'
-  if (headings.length > 0 && lists.length > 0) {
-    return inferTitleList(headings, lists, positionData);
-  }
-
-  // Rule 1: H1 only or H1 + single paragraph -> 'title'
-  if (headings.length > 0 && headings[0].type === 'heading' && (headings[0] as any).depth === 1) {
-    return inferTitle(headings, paragraphs, positionData);
-  }
-
-  // If we have H2 without list, treat as title too
-  if (headings.length > 0) {
-    return inferTitle(headings, paragraphs, positionData);
-  }
-
-  // Rule 6: Default fallback -> 'freestyle'
-  return inferFreestyle(nodes, positionData);
+function inferLayoutType(drafts: Draft[], hasColumnBreak: boolean): LayoutPreset {
+  if (hasColumnBreak) return 'two-column';
+  const types = drafts.map((d) => d.el.type);
+  if (types.includes('code')) return 'code-block';
+  const mediaCount = types.filter((t) => t === 'image' || t === 'video').length;
+  if (mediaCount === 1 && drafts.length === 1) return 'full-bleed-media';
+  if (mediaCount > 0) return 'media-anywhere';
+  if (types.includes('heading') && types.includes('list')) return 'title-list';
+  if (types.includes('heading')) return 'title';
+  return 'freestyle';
 }
 
 // ============================================================================
-// Explicit Layout Builder
+// Default positions
 // ============================================================================
 
-/**
- * Build elements for an explicitly-specified layout, reusing the same
- * inference helpers that heuristic detection uses for positioning.
- */
-function buildElementsForLayout(layout: LayoutPreset, nodes: Content[], positionData: any[]): LayoutInference {
-  if (nodes.length === 0) {
-    return { layout, elements: [] };
-  }
+interface Region {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
-  const headings = nodes.filter((n) => n.type === 'heading');
-  const lists = nodes.filter((n) => n.type === 'list');
-  const codeBlocks = nodes.filter((n) => n.type === 'code');
-  const paragraphs = nodes.filter((n) => n.type === 'paragraph');
+function round(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function place(d: Draft, x: number, y: number, width: number, height: number): void {
+  d.el.position = { x: round(x), y: round(y), width: round(width), height: round(height) };
+  d.placed = true;
+}
+
+/** Stack drafts vertically inside a region, preserving order. */
+function stack(
+  drafts: Draft[],
+  region: Region,
+  opts: { maxHeight?: number; gap?: number; weight?: (d: Draft) => number } = {},
+): void {
+  const n = drafts.length;
+  if (n === 0) return;
+  const MIN_HEIGHT = 4;
+  // Shrink the gap (down to 0) before shrinking elements, so everything fits in the region.
+  let gap = opts.gap ?? 3;
+  if (n > 1 && region.h - gap * (n - 1) < n * MIN_HEIGHT) {
+    gap = Math.max(0, (region.h - n * MIN_HEIGHT) / (n - 1));
+  }
+  const available = region.h - gap * (n - 1);
+  const weights = drafts.map((d) => (opts.weight ? opts.weight(d) : 1));
+  const total = weights.reduce((a, b) => a + b, 0);
+  let y = region.y;
+  const bottom = region.y + region.h;
+  drafts.forEach((d, i) => {
+    let h = (available * weights[i]) / total;
+    if (opts.maxHeight !== undefined) h = Math.min(h, opts.maxHeight);
+    h = Math.max(0, Math.min(h, bottom - y));
+    place(d, region.x, y, region.w, h);
+    y = Math.min(bottom, y + h + gap);
+  });
+}
+
+/** The first element, if it is a heading (a heading slot never reorders content). */
+const leadingHeading = (drafts: Draft[]) => (drafts[0]?.el.type === 'heading' ? drafts[0] : undefined);
+
+const isMedia = (d: Draft) => d.el.type === 'image' || d.el.type === 'video';
+
+function assignPositions(layout: LayoutPreset, drafts: Draft[], hasColumnBreak: boolean): void {
+  const unplaced = drafts.filter((d) => !d.placed);
+  if (unplaced.length === 0) return;
+  const take = (d: Draft | undefined) => {
+    if (d) unplaced.splice(unplaced.indexOf(d), 1);
+    return d;
+  };
 
   switch (layout) {
-    case 'two-column': {
-      const columnBreakIndex = nodes.findIndex(
-        (n) => n.type === 'html' && (n as any).value?.includes('<!-- column-break -->')
-      );
-      if (columnBreakIndex !== -1) {
-        return inferTwoColumn(nodes, columnBreakIndex, positionData);
-      }
-      // No column-break marker — fall through to freestyle-style elements with two-column layout
-      return { layout: 'two-column', elements: inferFreestyle(nodes, positionData).elements };
+    case 'title': {
+      // Source order is kept top-to-bottom: first element -> title slot,
+      // second -> subtitle slot, the rest stacked below.
+      const title = take(unplaced[0]);
+      if (title) place(title, 15, 30, 70, 20);
+      const subtitle = take(unplaced[0]);
+      if (subtitle) place(subtitle, 20, 55, 60, 10);
+      stack(unplaced, { x: 15, y: 68, w: 70, h: 28 }, { maxHeight: 12 });
+      return;
     }
-    case 'code-block':
-      if (codeBlocks.length > 0) {
-        return inferCodeBlock(nodes, headings, codeBlocks, paragraphs, positionData);
-      }
-      // No code blocks — build elements with the layout label but freestyle content
-      return { layout: 'code-block', elements: inferFreestyle(nodes, positionData).elements };
+    case 'title-list': {
+      const heading = take(leadingHeading(unplaced));
+      if (heading) place(heading, 12, 10, 76, 15);
+      stack(unplaced, heading ? { x: 14, y: 30, w: 72, h: 58 } : { x: 14, y: 10, w: 72, h: 78 });
+      return;
+    }
+    case 'code-block': {
+      const heading = take(leadingHeading(unplaced));
+      if (heading) place(heading, 12, 8, 76, 10);
+      const region = heading ? { x: 12, y: 22, w: 76, h: 72 } : { x: 12, y: 8, w: 76, h: 86 };
+      const hasCode = unplaced.some((d) => d.el.type === 'code');
+      stack(unplaced, region, { weight: (d) => (d.el.type === 'code' || !hasCode ? 6 : 1) });
+      return;
+    }
     case 'full-bleed-media': {
-      const imagePara = nodes.find((n) => n.type === 'paragraph' && (n as any).children?.some((c: any) => c.type === 'image'));
-      const imageNode = findFirstImageInNodes(nodes);
-      if (imageNode) {
-        return inferFullBleedMedia(imageNode, positionData, imagePara);
+      const media = take(unplaced.find(isMedia));
+      if (media) {
+        place(media, 0, 0, 100, 100);
+        if (media.el.type === 'image' && media.el.objectFit === undefined) media.el.objectFit = 'cover';
       }
-      return { layout, elements: inferFreestyle(nodes, positionData).elements };
+      stack(unplaced, { x: 5, y: 80, w: 90, h: 15 });
+      return;
     }
     case 'media-anywhere': {
-      const imageParagraph = nodes.find((n) => n.type === 'paragraph' && n.children?.some((c: any) => c.type === 'image'));
-      const imageNode = findFirstImage(imageParagraph);
-      const contentNodes = nodes.filter((n) => n.type !== 'paragraph' || !n.children?.some((c: any) => c.type === 'image'));
-      if (imageNode) {
-        return inferMediaAnywhere(contentNodes, imageNode, positionData, imageParagraph);
-      }
-      return { layout, elements: inferFreestyle(nodes, positionData).elements };
+      const media = unplaced.filter(isMedia);
+      const other = unplaced.filter((d) => !isMedia(d));
+      if (media.length === 1) place(media[0], 54, 12, 34, 56);
+      else stack(media, { x: 54, y: 12, w: 34, h: 76 });
+      stack(other, { x: 12, y: 12, w: 38, h: 76 });
+      return;
     }
-    case 'title-list':
-      if (headings.length > 0 && lists.length > 0) {
-        return inferTitleList(headings, lists, positionData);
+    case 'two-column': {
+      const heading = take(leadingHeading(unplaced));
+      if (heading) place(heading, 12, 10, 76, 12);
+      let left: Draft[];
+      let right: Draft[];
+      if (hasColumnBreak) {
+        left = unplaced.filter((d) => d.column === 'left');
+        right = unplaced.filter((d) => d.column === 'right');
+      } else {
+        const half = Math.ceil(unplaced.length / 2);
+        left = unplaced.slice(0, half);
+        right = unplaced.slice(half);
       }
-      return { layout: 'title-list', elements: inferFreestyle(nodes, positionData).elements };
-    case 'title':
-      return inferTitle(headings.length > 0 ? headings : [nodes[0]], paragraphs, positionData);
+      const top = heading ? 26 : 10;
+      const height = heading ? 62 : 78;
+      stack(left, { x: 12, y: top, w: 36, h: height });
+      stack(right, { x: 52, y: top, w: 36, h: height });
+      return;
+    }
     case 'freestyle':
-      return inferFreestyle(nodes, positionData);
     case 'blank':
-      return { layout: 'blank', elements: [] };
     default:
-      return inferFreestyle(nodes, positionData);
+      stack(unplaced, { x: 15, y: 15, w: 70, h: 80 }, { maxHeight: 15 });
+      return;
   }
 }
+
+// ============================================================================
+// Element construction & validation
+// ============================================================================
 
 /**
- * Find the first image node across all nodes (used by explicit layout builder).
+ * Build a schema-valid element from an untrusted candidate object.
+ * Invalid or unknown properties are dropped with a warning; required fields
+ * get defaults. Never throws.
  */
-function findFirstImageInNodes(nodes: Content[]): { url: string; alt?: string } | null {
-  for (const node of nodes) {
-    const result = findFirstImage(node);
-    if (result) return result;
+export function finalizeElement(candidate: Record<string, unknown>, warnings: string[]): SlideElement {
+  const type = isElementType(candidate.type) ? candidate.type : 'text';
+  if (type !== candidate.type) {
+    warnings.push(`Unknown element type "${String(candidate.type)}"; imported as text.`);
   }
-  return null;
-}
+  const schema = ELEMENT_SCHEMAS[type];
+  const shape = schema.shape as Record<string, z.ZodType>;
+  const out: Record<string, unknown> = { id: crypto.randomUUID(), type };
 
-// ============================================================================
-// Layout-Specific Inference Helpers
-// ============================================================================
-
-function inferTwoColumn(nodes: Content[], columnBreakIndex: number, positionData: any[]): LayoutInference {
-  const beforeBreak = nodes.slice(0, columnBreakIndex);
-  const afterBreak = nodes.slice(columnBreakIndex + 1);
-
-  const titleNode = beforeBreak.find((n) => n.type === 'heading');
-  const title = titleNode ? extractText(titleNode) : undefined;
-  const leftNodes = titleNode ? beforeBreak.filter((n) => n !== titleNode) : beforeBreak;
-  const rightNodes = afterBreak;
-
-  const elements: SlideElement[] = [];
-  let posIdx = 0;
-
-  if (title && titleNode) {
-    const headingEl: SlideElement = {
-      id: crypto.randomUUID(),
-      type: 'heading',
-      position: positionData[posIdx] || { x: 12, y: 10, width: 76, height: 12 },
-      content: title,
-      level: ((titleNode as any).depth || 1) as 1 | 2 | 3 | 4 | 5 | 6,
-    };
-    applyFragmentData(headingEl, titleNode);
-    elements.push(headingEl);
-    posIdx++;
-  }
-
-  const leftEl: SlideElement = {
-    id: crypto.randomUUID(),
-    type: 'text',
-    position: positionData[posIdx] || { x: 12, y: 26, width: 36, height: 62 },
-    content: leftNodes.map(extractText).join('\n\n'),
-  };
-  if (leftNodes.length > 0) applyFragmentData(leftEl, leftNodes[0]);
-  elements.push(leftEl);
-  posIdx++;
-
-  const rightEl: SlideElement = {
-    id: crypto.randomUUID(),
-    type: 'text',
-    position: positionData[posIdx] || { x: 52, y: 26, width: 36, height: 62 },
-    content: rightNodes.map(extractText).join('\n\n'),
-  };
-  if (rightNodes.length > 0) applyFragmentData(rightEl, rightNodes[0]);
-  elements.push(rightEl);
-
-  return { layout: 'two-column', elements };
-}
-
-function inferCodeBlock(
-  nodes: Content[],
-  headings: Content[],
-  codeBlocks: Content[],
-  paragraphs: Content[],
-  positionData: any[]
-): LayoutInference {
-  const codeNode = codeBlocks[0] as any;
-  const title = headings.length > 0 ? extractText(headings[0]) : undefined;
-
-  // Find paragraphs that are NOT before the code block (i.e. caption after code)
-  const codeIdx = nodes.indexOf(codeBlocks[0]);
-  const captionParagraphs = paragraphs.filter((p) => nodes.indexOf(p) > codeIdx);
-  const caption = captionParagraphs.length > 0 ? extractText(captionParagraphs[0]) : undefined;
-
-  const elements: SlideElement[] = [];
-  let posIdx = 0;
-
-  if (title) {
-    const headingEl: SlideElement = {
-      id: crypto.randomUUID(),
-      type: 'heading',
-      position: positionData[posIdx] || { x: 12, y: 8, width: 76, height: 10 },
-      content: title,
-      level: 2,
-    };
-    applyFragmentData(headingEl, headings[0]);
-    elements.push(headingEl);
-    posIdx++;
-  }
-
-  const codeEl: SlideElement = {
-    id: crypto.randomUUID(),
-    type: 'code',
-    position: positionData[posIdx] || { x: 12, y: 22, width: 76, height: 60 },
-    code: codeNode.value || '',
-    language: codeNode.lang || 'text',
-  };
-  applyFragmentData(codeEl, codeBlocks[0]);
-  elements.push(codeEl);
-  posIdx++;
-
-  if (caption) {
-    const captionEl: SlideElement = {
-      id: crypto.randomUUID(),
-      type: 'text',
-      position: positionData[posIdx] || { x: 12, y: 86, width: 76, height: 8 },
-      content: caption,
-    };
-    applyFragmentData(captionEl, captionParagraphs[0]);
-    elements.push(captionEl);
-  }
-
-  return { layout: 'code-block', elements };
-}
-
-function inferFullBleedMedia(imageNode: { url: string; alt?: string }, positionData: any[], sourceNode?: any): LayoutInference {
-  const element: SlideElement = {
-    id: crypto.randomUUID(),
-    type: 'image',
-    position: positionData[0] || { x: 0, y: 0, width: 100, height: 100 },
-    url: imageNode.url,
-    objectFit: 'cover',
-  };
-
-  // Only set alt if non-empty
-  if (imageNode.alt) {
-    element.alt = imageNode.alt;
-  }
-
-  if (sourceNode) applyFragmentData(element, sourceNode);
-
-  return { layout: 'full-bleed-media', elements: [element] };
-}
-
-function inferMediaAnywhere(contentNodes: Content[], imageNode: { url: string; alt?: string }, positionData: any[], imageSourceNode?: any): LayoutInference {
-  const imageElement: SlideElement = {
-    id: crypto.randomUUID(),
-    type: 'image',
-    position: positionData[1] || { x: 54, y: 12, width: 34, height: 56 },
-    url: imageNode.url,
-  };
-
-  // Only set alt if non-empty
-  if (imageNode.alt) {
-    imageElement.alt = imageNode.alt;
-  }
-
-  if (imageSourceNode) applyFragmentData(imageElement, imageSourceNode);
-
-  const textEl: SlideElement = {
-    id: crypto.randomUUID(),
-    type: 'text',
-    position: positionData[0] || { x: 12, y: 12, width: 38, height: 76 },
-    content: contentNodes.map(extractText).join('\n\n'),
-  };
-  if (contentNodes.length > 0) applyFragmentData(textEl, contentNodes[0]);
-
-  return { layout: 'media-anywhere', elements: [textEl, imageElement] };
-}
-
-function inferTitleList(headings: Content[], lists: Content[], positionData: any[]): LayoutInference {
-  const title = extractText(headings[0]);
-  const items = extractListItems(lists[0]);
-  const isOrdered = (lists[0] as any).ordered === true;
-
-  const headingEl: SlideElement = {
-    id: crypto.randomUUID(),
-    type: 'heading',
-    position: positionData[0] || { x: 12, y: 10, width: 76, height: 15 },
-    content: title,
-    level: 1,
-  };
-  applyFragmentData(headingEl, headings[0]);
-
-  const listEl: SlideElement = {
-    id: crypto.randomUUID(),
-    type: 'list',
-    position: positionData[1] || { x: 14, y: 30, width: 72, height: 58 },
-    items,
-    ordered: isOrdered,
-  };
-  applyFragmentData(listEl, lists[0]);
-
-  return { layout: 'title-list', elements: [headingEl, listEl] };
-}
-
-function inferTitle(headings: Content[], paragraphs: Content[], positionData: any[]): LayoutInference {
-  const elements: SlideElement[] = [];
-  let posIdx = 0;
-
-  // Primary heading
-  const headingEl: SlideElement = {
-    id: crypto.randomUUID(),
-    type: 'heading',
-    position: positionData[posIdx] || { x: 15, y: 30, width: 70, height: 20 },
-    content: extractText(headings[0]),
-    level: ((headings[0] as any).depth || 1) as 1 | 2 | 3 | 4 | 5 | 6,
-  };
-  applyFragmentData(headingEl, headings[0]);
-  elements.push(headingEl);
-  posIdx++;
-
-  // Subtitle paragraph (first paragraph only)
-  if (paragraphs.length > 0) {
-    const subtitleEl: SlideElement = {
-      id: crypto.randomUUID(),
-      type: 'text',
-      position: positionData[posIdx] || { x: 20, y: 55, width: 60, height: 10 },
-      content: extractText(paragraphs[0]),
-    };
-    applyFragmentData(subtitleEl, paragraphs[0]);
-    elements.push(subtitleEl);
-    posIdx++;
-  }
-
-  // Additional headings
-  for (let i = 1; i < headings.length; i++) {
-    const el: SlideElement = {
-      id: crypto.randomUUID(),
-      type: 'heading',
-      position: positionData[posIdx] || { x: 15, y: 55 + (i - 1) * 15, width: 70, height: 12 },
-      content: extractText(headings[i]),
-      level: ((headings[i] as any).depth || 2) as 1 | 2 | 3 | 4 | 5 | 6,
-    };
-    applyFragmentData(el, headings[i]);
-    elements.push(el);
-    posIdx++;
-  }
-
-  // Additional paragraphs
-  for (let i = 1; i < paragraphs.length; i++) {
-    const el: SlideElement = {
-      id: crypto.randomUUID(),
-      type: 'text',
-      position: positionData[posIdx] || { x: 20, y: 70 + (i - 1) * 12, width: 60, height: 10 },
-      content: extractText(paragraphs[i]),
-    };
-    applyFragmentData(el, paragraphs[i]);
-    elements.push(el);
-    posIdx++;
-  }
-
-  return { layout: 'title', elements };
-}
-
-function inferFreestyle(nodes: Content[], positionData: any[]): LayoutInference {
-  const elements: SlideElement[] = nodes.map((node, idx) => {
-    const defaultPos = positionData[idx] || {
-      x: 15,
-      y: 15 + idx * 18,
-      width: 70,
-      height: 15,
-    };
-
-    let el: SlideElement;
-
-    if (node.type === 'heading') {
-      el = {
-        id: crypto.randomUUID(),
-        type: 'heading',
-        content: extractText(node),
-        position: defaultPos,
-        level: ((node as any).depth || 1) as 1 | 2 | 3 | 4 | 5 | 6,
-      };
-    } else if (node.type === 'list') {
-      el = {
-        id: crypto.randomUUID(),
-        type: 'list',
-        items: extractListItems(node),
-        ordered: (node as any).ordered === true,
-        position: defaultPos,
-      };
-    } else if (node.type === 'html' && !(node as any).value?.trim().startsWith('<!--')) {
-      el = {
-        id: crypto.randomUUID(),
-        type: 'html',
-        htmlContent: (node as any).value || '',
-        position: defaultPos,
-      };
+  for (const [key, value] of Object.entries(candidate)) {
+    if (key === 'id' || key === 'type' || value === undefined) continue;
+    if (key === 'position') {
+      const pos = parsePosition(value);
+      if (pos) out.position = pos;
+      else warnings.push(`Invalid position on ${type} element ignored.`);
+      continue;
+    }
+    const fieldSchema = Object.hasOwn(shape, key) ? shape[key] : undefined;
+    if (!fieldSchema || typeof fieldSchema.safeParse !== 'function') {
+      warnings.push(`Unknown property "${key}" on ${type} element ignored.`);
+      continue;
+    }
+    const result = fieldSchema.safeParse(value);
+    if (result.success) {
+      if (result.data !== undefined) out[key] = result.data;
     } else {
-      el = {
-        id: crypto.randomUUID(),
-        type: 'text',
-        content: extractText(node),
-        position: defaultPos,
-      };
+      warnings.push(`Invalid value for "${key}" on ${type} element ignored.`);
     }
+  }
 
-    applyFragmentData(el, node);
-    return el;
-  });
+  for (const [key, def] of Object.entries(REQUIRED_DEFAULTS[type])) {
+    if (out[key] === undefined) out[key] = Array.isArray(def) ? [] : def;
+  }
+  if (!out.position) out.position = { ...PLACEHOLDER_POSITION };
 
-  return { layout: 'freestyle', elements };
+  const result = schema.safeParse(out);
+  if (result.success) return result.data as unknown as SlideElement;
+  // Should be unreachable; keep content as text rather than failing the import.
+  warnings.push(`Could not validate ${type} element; imported as text.`);
+  return {
+    id: out.id as string,
+    type: 'text',
+    position: out.position as ElementPosition,
+    content: typeof out.content === 'string' ? out.content : '',
+  };
 }
-
-// ============================================================================
-// Helpers
-// ============================================================================
 
 /**
- * Copy fragment metadata (_fragment, _fragmentPerItem) from an mdast node to a SlideElement.
+ * Decode an `<!-- element: {...} -->` segment into element draft(s).
  */
-function applyFragmentData(element: SlideElement, node: any): void {
-  if (node._fragment != null) {
-    element.fragment = node._fragment;
+function segmentToDrafts(
+  seg: Extract<SlideItem, { kind: 'segment' }>,
+  source: string,
+  warnings: string[],
+): Draft[] {
+  const props = seg.props;
+  if (!props || !isElementType(props.type)) {
+    if (props) warnings.push(`Unknown element type "${String(props.type)}"; content imported as plain markdown.`);
+    return [...seg.nodes, ...seg.extra]
+      .flatMap((node) => nodeToElements(node, source))
+      .map((el) => ({ el, placed: false, column: 'left' as const }));
   }
-  if (node._fragmentPerItem && element.type === 'list') {
-    element.fragmentPerItem = true;
+
+  const nodes = seg.nodes;
+  const single = nodes.length === 1 ? (nodes[0] as any) : undefined;
+  const body = seg.body;
+  const candidate: Record<string, unknown> = { ...props };
+  const extras: SlideElement[] = [];
+  const asTextFallback = () => {
+    // Body doesn't match the declared type: keep the content verbatim as text.
+    warnings.push(`Content of ${String(props.type)} element did not match its type; imported as text.`);
+    candidate.type = 'text';
+    candidate.content = body;
+  };
+
+  switch (props.type as ElementType) {
+    case 'text':
+      if (!Object.hasOwn(props, 'content')) candidate.content = body;
+      break;
+    case 'html':
+      if (!Object.hasOwn(props, 'htmlContent')) candidate.htmlContent = body;
+      break;
+    case 'heading':
+      if (!Object.hasOwn(props, 'content')) {
+        if (single?.type === 'heading') {
+          candidate.content = inlineSlice(single, source);
+          if (!Object.hasOwn(props, 'level')) candidate.level = single.depth;
+        } else {
+          candidate.content = body.replace(/^#{1,6}[ \t]*/, '');
+        }
+      }
+      break;
+    case 'list':
+      if (!Object.hasOwn(props, 'items')) {
+        if (single?.type === 'list') {
+          candidate.items = extractListItems(single, source);
+          if (!Object.hasOwn(props, 'ordered')) candidate.ordered = single.ordered === true;
+        } else if (body !== '') {
+          asTextFallback();
+        }
+      }
+      break;
+    case 'code':
+      if (!Object.hasOwn(props, 'code')) {
+        if (single?.type === 'code') {
+          candidate.code = single.value ?? '';
+          if (!Object.hasOwn(props, 'language')) candidate.language = single.lang || 'text';
+        } else if (body !== '') {
+          asTextFallback();
+        }
+      }
+      break;
+    case 'image':
+    case 'video':
+      if (!Object.hasOwn(props, 'url')) {
+        const media = single ? imageOnlyParagraph(single) : null;
+        if (media && media.length === 1) {
+          candidate.url = media[0].url ?? '';
+          if (props.type === 'image' && !Object.hasOwn(props, 'alt') && media[0].alt) candidate.alt = media[0].alt;
+        } else if (body !== '') {
+          asTextFallback();
+        }
+      }
+      break;
+    case 'rectangle':
+    case 'circle':
+    case 'line':
+      // Shapes carry everything in the directive; keep any stray content.
+      extras.push(...nodes.flatMap((node) => nodeToElements(node, source)));
+      break;
+  }
+
+  if (seg.extra.length > 0) {
+    warnings.push(`Content after a ${String(props.type)} element block imported as separate element(s).`);
+    extras.push(...seg.extra.flatMap((node) => nodeToElements(node, source)));
+  }
+
+  const el = finalizeElement(candidate, warnings);
+  const placed = parsePosition(props.position) !== undefined;
+  return [
+    { el, placed, column: 'left' },
+    ...extras.map((e) => ({ el: e, placed: false, column: 'left' as const })),
+  ];
+}
+
+/**
+ * Convert one mdast node to element(s) without dropping anything.
+ * Text content is the verbatim markdown source, so inline formatting
+ * (links, emphasis, strikethrough, hard breaks, escapes) is preserved exactly.
+ */
+export function nodeToElements(node: Content, source: string): SlideElement[] {
+  const base = () => ({ id: crypto.randomUUID(), position: { ...PLACEHOLDER_POSITION } });
+  const n = node as any;
+
+  switch (node.type) {
+    case 'heading':
+      return [{ ...base(), type: 'heading', content: inlineSlice(n, source), level: (n.depth || 1) as 1 | 2 | 3 | 4 | 5 | 6 }];
+    case 'paragraph': {
+      const media = imageOnlyParagraph(n);
+      if (media) {
+        return media.map((img): SlideElement => {
+          if (isVideoUrl(img.url ?? '')) return { ...base(), type: 'video', url: img.url ?? '' };
+          const el: SlideElement = { ...base(), type: 'image', url: img.url ?? '' };
+          if (img.alt) el.alt = img.alt;
+          return el;
+        });
+      }
+      return [{ ...base(), type: 'text', content: sliceNode(n, source) }];
+    }
+    case 'list':
+      return [{ ...base(), type: 'list', items: extractListItems(n, source), ordered: n.ordered === true }];
+    case 'code': {
+      const el: SlideElement = { ...base(), type: 'code', code: n.value ?? '', language: n.lang || 'text' };
+      const highlight = parseHighlightMeta(n.meta);
+      if (highlight) el.highlightLines = highlight;
+      return [el];
+    }
+    case 'html':
+      return [{ ...base(), type: 'html', htmlContent: n.value ?? '' }];
+    default:
+      // Tables, blockquotes, definitions, etc. keep their markdown verbatim.
+      return [{ ...base(), type: 'text', content: sliceNode(n, source) }];
   }
 }
 
-function extractText(node: any): string {
+// ============================================================================
+// Source helpers
+// ============================================================================
+
+function offsets(node: any): [number, number] | null {
+  const start = node?.position?.start?.offset;
+  const end = node?.position?.end?.offset;
+  return typeof start === 'number' && typeof end === 'number' ? [start, end] : null;
+}
+
+/** Verbatim markdown source of a node (falls back to plain text). */
+export function sliceNode(node: any, source: string): string {
+  const range = offsets(node);
+  if (!range || !source) return plainText(node);
+  return dedentContinuation(source.slice(range[0], range[1]), (node.position.start.column ?? 1) - 1);
+}
+
+/** Verbatim inline source of a node's children (e.g. heading text). */
+export function inlineSlice(node: any, source: string): string {
+  const children = node?.children ?? [];
+  if (children.length === 0) return '';
+  const first = offsets(children[0]);
+  const last = offsets(children[children.length - 1]);
+  if (!first || !last || !source) return plainText(node);
+  return dedentContinuation(source.slice(first[0], last[1]), (children[0].position.start.column ?? 1) - 1);
+}
+
+/** Remove up to `indent` leading spaces from continuation lines (nested containers). */
+function dedentContinuation(text: string, indent: number): string {
+  if (indent <= 0 || !text.includes('\n')) return text;
+  const re = new RegExp(`\\n {1,${indent}}`, 'g');
+  return text.replace(re, '\n');
+}
+
+function plainText(node: any): string {
   if (!node) return '';
-
-  if (node.type === 'text') {
-    return node.value || '';
-  }
-
-  if (node.type === 'heading' || node.type === 'paragraph') {
-    if (node.children) {
-      return node.children.map(extractText).join('');
-    }
-  }
-
-  if (node.type === 'list') {
-    return node.children?.map(extractText).join('\n') || '';
-  }
-
-  if (node.type === 'listItem') {
-    return node.children?.map(extractText).join('') || '';
-  }
-
-  // GFM table: convert back to pipe-formatted markdown
-  if (node.type === 'table') {
-    return extractTableMarkdown(node);
-  }
-
-  if (node.type === 'strong') {
-    return `**${node.children?.map(extractText).join('') || ''}**`;
-  }
-
-  if (node.type === 'emphasis') {
-    return `*${node.children?.map(extractText).join('') || ''}*`;
-  }
-
-  if (node.type === 'inlineCode') {
-    return `\`${node.value || ''}\``;
-  }
-
-  if (node.type === 'link') {
-    const text = node.children?.map(extractText).join('') || '';
-    return `[${text}](${node.url || ''})`;
-  }
-
-  if (node.type === 'html') {
-    return node.value || '';
-  }
-
-  if (node.children) {
-    return node.children.map(extractText).join('');
-  }
-
+  if (typeof node.value === 'string') return node.value;
+  if (Array.isArray(node.children)) return node.children.map(plainText).join('');
   return '';
 }
 
-/**
- * Convert a mdast table node back to pipe-formatted markdown.
- */
-function extractTableMarkdown(tableNode: any): string {
-  if (!tableNode.children || tableNode.children.length === 0) return '';
-
-  const rows: string[][] = [];
-  for (const row of tableNode.children) {
-    const cells: string[] = [];
-    for (const cell of row.children || []) {
-      cells.push(cell.children?.map(extractText).join('') || '');
-    }
-    rows.push(cells);
-  }
-
-  if (rows.length === 0) return '';
-
-  // Build pipe-formatted lines
-  const lines: string[] = [];
-  // Header row
-  lines.push('| ' + rows[0].join(' | ') + ' |');
-  // Separator row
-  lines.push('| ' + rows[0].map(() => '---').join(' | ') + ' |');
-  // Data rows
-  for (let i = 1; i < rows.length; i++) {
-    lines.push('| ' + rows[i].join(' | ') + ' |');
-  }
-
-  return lines.join('\n');
+function isVideoUrl(url: string): boolean {
+  const path = url.split(/[?#]/, 1)[0];
+  return (
+    /\.(?:mp4|webm|ogv|ogg|mov|m4v)$/i.test(path) ||
+    /^(?:https?:)?\/\/(?:www\.)?(?:youtube\.com|youtu\.be|vimeo\.com)\//i.test(url)
+  );
 }
 
-function extractListItems(listNode: any): string[] {
-  if (!listNode || !listNode.children) return [];
+/** If the paragraph consists only of images (plus whitespace/breaks), return them. */
+function imageOnlyParagraph(node: any): Array<{ url?: string; alt?: string }> | null {
+  if (node?.type !== 'paragraph' || !Array.isArray(node.children)) return null;
+  const images: Array<{ url?: string; alt?: string }> = [];
+  for (const child of node.children) {
+    if (child.type === 'image') images.push(child);
+    else if (child.type === 'break') continue;
+    else if (child.type === 'text' && child.value.trim() === '') continue;
+    else return null;
+  }
+  return images.length > 0 ? images : null;
+}
 
-  return listNode.children.map((item: any) => {
-    if (item.type === 'listItem') {
-      const parts: string[] = [];
-      for (const child of item.children || []) {
-        if (child.type === 'list') {
-          parts.push(listNodeToHtml(child));
-        } else {
-          parts.push(extractText(child).trim());
-        }
-      }
-      return parts.join('');
+function parseHighlightMeta(meta: unknown): number[] | undefined {
+  if (typeof meta !== 'string') return undefined;
+  const match = meta.match(/^\{([\d,\s-]+)\}$/);
+  if (!match) return undefined;
+  const lines: number[] = [];
+  for (const part of match[1].split(',')) {
+    const range = part.trim().match(/^(\d+)(?:-(\d+))?$/);
+    if (!range) continue;
+    const start = parseInt(range[1], 10);
+    const end = range[2] ? parseInt(range[2], 10) : start;
+    for (let i = start; i <= end && i - start < 1000; i++) lines.push(i);
+  }
+  return lines.length > 0 ? lines : undefined;
+}
+
+/**
+ * Extract list items as inline markdown strings.
+ * Multiple paragraphs within one item are joined with a newline (not glued);
+ * nested lists are converted to HTML (the format the editor uses).
+ */
+export function extractListItems(listNode: any, source: string): string[] {
+  if (!listNode || !Array.isArray(listNode.children)) return [];
+  return listNode.children.map((item: any) => listItemContent(item, source));
+}
+
+function listItemContent(item: any, source: string): string {
+  if (item?.type !== 'listItem') return '';
+  const children: any[] = item.children ?? [];
+  const nested = children.some((c) => c.type === 'list');
+  const textParts: string[] = [];
+  let nestedHtml = '';
+  for (const child of children) {
+    if (child.type === 'list') {
+      nestedHtml += listNodeToHtml(child, source);
+    } else {
+      textParts.push(sliceNode(child, source).trim());
     }
-    return '';
-  }).filter(Boolean);
+  }
+  let text = textParts.join('\n');
+  if (nested) text = inlineMarkdownToHtml(text);
+  if (typeof item.checked === 'boolean') text = `[${item.checked ? 'x' : ' '}] ${text}`;
+  return text + nestedHtml;
 }
 
 /**
  * Convert a mdast list node to HTML string for nested list support.
  */
-function listNodeToHtml(listNode: any): string {
+function listNodeToHtml(listNode: any, source: string): string {
   const tag = listNode.ordered ? 'ol' : 'ul';
-  const items = (listNode.children || []).map((item: any) => {
-    if (item.type !== 'listItem') return '';
-    const parts: string[] = [];
-    for (const child of item.children || []) {
-      if (child.type === 'list') {
-        parts.push(listNodeToHtml(child));
-      } else {
-        const text = extractText(child).trim();
-        // Convert inline markdown to basic HTML
-        let html = text;
-        html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-        html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-        html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
-        parts.push(html);
+  const items = (listNode.children || [])
+    .map((item: any) => {
+      if (item.type !== 'listItem') return '';
+      const parts: string[] = [];
+      for (const child of item.children || []) {
+        if (child.type === 'list') parts.push(listNodeToHtml(child, source));
+        else parts.push(inlineMarkdownToHtml(sliceNode(child, source).trim()));
       }
-    }
-    return `<li>${parts.join('')}</li>`;
-  }).join('');
+      return `<li>${parts.join('')}</li>`;
+    })
+    .join('');
   return `<${tag}>${items}</${tag}>`;
 }
 
-function findFirstImage(node: any): { url: string; alt?: string } | null {
-  if (!node) return null;
-
-  if (node.type === 'image') {
-    return { url: node.url, alt: node.alt };
-  }
-
-  if (node.children) {
-    for (const child of node.children) {
-      const result = findFirstImage(child);
-      if (result) return result;
-    }
-  }
-
-  return null;
+function inlineMarkdownToHtml(text: string): string {
+  let html = text;
+  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  html = html.replace(/~~(.+?)~~/g, '<del>$1</del>');
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  html = html.replace(/\[([^\][]+)\]\(([^()\s]+)\)/g, '<a href="$2">$1</a>');
+  return html;
 }
+

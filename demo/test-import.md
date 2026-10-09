@@ -85,7 +85,7 @@ A single heading with an optional subtitle line creates a centered title layout 
 - This item appears third (click 3)
 - This item appears fourth (click 4)
 
-<!-- notes: Add both <!-- fragment: 1 --> and <!-- fragment-items --> before a list to reveal items individually. Each click reveals the next item. -->
+<!-- notes: Add both a fragment directive (fragment: 1) and a fragment-items directive before a list to reveal items individually. Each click reveals the next item. -->
 
 ---
 
@@ -286,7 +286,7 @@ This is a third text block.
 
 <!-- layout: blank -->
 
-<!-- notes: This is a blank slide. Use <!-- layout: blank --> when you want an empty slide, perhaps as a pause point or for shapes added in the editor. -->
+<!-- notes: This is a blank slide. Use the layout directive with the value blank when you want an empty slide, perhaps as a pause point or for shapes added in the editor. -->
 
 ---
 

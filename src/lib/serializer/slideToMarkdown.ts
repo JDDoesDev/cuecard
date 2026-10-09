@@ -1,235 +1,298 @@
 import type { Slide } from '../../types/presentation';
 import type { SlideElement } from '../../types/slide';
-import type { PhrasingContent, BlockContent } from 'mdast';
+import { directive, encodeDirectiveJson } from '../parser/directives';
+import { parsePresentationSync } from '../parser/parsePresentation';
 
 /**
- * Convert a Slide object to mdast nodes.
- * Iterates the elements array and serializes each element by type.
- * Position data is preserved via <!-- position: JSON --> comments for round-trip.
+ * Markdown export format (lossless app -> md -> app):
+ *
+ *   <!-- transition: fade -->            (only when not 'none')
+ *   <!-- layout: title -->
+ *   <!-- element: {"type":"heading","position":{...},"level":1} -->
+ *   # Heading text
+ *   <!-- element: {"type":"text","position":{...},"fontFamily":"Inter"} -->
+ *   Raw **markdown** content
+ *   ???
+ *   Speaker notes, verbatim
+ *
+ * Each element directive carries the element type and every property that
+ * markdown cannot express; the element's content follows as readable
+ * markdown. Before emitting a body, the serializer re-parses it and checks
+ * that it reads back identically; if it would not (e.g. text containing
+ * `---` or `???`, an unclosed code fence, ...), the content is stored in the
+ * directive JSON instead, so export is always lossless.
  */
-export function slideToMarkdown(slide: Slide): BlockContent[] {
-  const nodes: BlockContent[] = [];
-
-  // Add transition metadata if not default
-  if (slide.transition !== 'none') {
-    nodes.push({
-      type: 'html',
-      value: `<!-- transition: ${slide.transition} -->`,
-    });
+export function slideToMarkdown(slide: Slide): string {
+  const header: string[] = [];
+  if (slide.transition && slide.transition !== 'none') {
+    header.push(directive('transition', slide.transition));
   }
+  header.push(directive('layout', slide.layout));
 
-  // Always emit layout directive for round-trip fidelity
-  nodes.push({
-    type: 'html',
-    value: `<!-- layout: ${slide.layout} -->`,
-  });
-
-  // Serialize based on layout for structural markers (like column-break)
-  // But the actual content comes from elements
-  if (slide.layout === 'two-column') {
-    serializeTwoColumn(slide, nodes);
-  } else {
-    // For all other layouts, serialize elements in order
-    for (const element of slide.elements) {
-      serializeElement(element, nodes);
-    }
-  }
-
-  // Add speaker notes after ??? separator
+  let notesBlocks: string[] = [];
   if (slide.notes) {
-    nodes.push({
-      type: 'paragraph',
-      children: [{ type: 'text', value: '???' }],
-    });
-    nodes.push({
-      type: 'html',
-      value: slide.notes,
-    });
+    if (notesRoundTrip(slide.notes)) {
+      notesBlocks = ['???', slide.notes];
+    } else {
+      header.push(directive('notes-data', encodeDirectiveJson(slide.notes)));
+    }
   }
 
-  return nodes;
+  const render = (elementBlocks: string[][]) =>
+    [...header, ...elementBlocks.flat(), ...notesBlocks].join('\n\n');
+
+  const encoded = slide.elements.map(encodeElement);
+
+  // 1. Plain markdown (no element directives) when the importer's heuristics
+  //    reproduce every element exactly — hand-written decks export unchanged.
+  if (encoded.every((e) => e.plain !== null)) {
+    const plain = encoded.map((e) => e.plain!);
+    const candidates: string[][][] = [];
+    if (slide.layout === 'two-column') {
+      // Prefer an explicit column break before the first right-hand element
+      const k = slide.elements.findIndex((el) => el.position.x >= 50);
+      if (k > 0) candidates.push([...plain.slice(0, k), [directive('column-break')], ...plain.slice(k)]);
+    }
+    candidates.push(plain);
+    for (const candidate of candidates) {
+      const md = render(candidate);
+      if (slideRoundTrips(md, slide)) return md;
+    }
+  }
+
+  const full = encoded.map((e) => e.blocks(false));
+  if (slide.elements.length === 0) return render(full);
+
+  // 2. Omit positions that auto-layout would reproduce anyway.
+  const withoutPositions = parseSlide(render(encoded.map((e) => e.blocks(true))));
+  if (withoutPositions && withoutPositions.elements.length === slide.elements.length) {
+    const auto = new Set<number>();
+    slide.elements.forEach((el, i) => {
+      if (samePosition(withoutPositions.elements[i].position, el.position)) auto.add(i);
+    });
+    if (auto.size > 0) {
+      const md = render(encoded.map((e, i) => e.blocks(auto.has(i))));
+      if (slideRoundTrips(md, slide)) return md;
+    }
+  }
+
+  // 3. Fully explicit (always lossless: each element block was verified).
+  return render(full);
 }
 
-/**
- * Two-column layout needs special handling for the column-break marker.
- * Elements: [optional heading, left text, right text]
- */
-function serializeTwoColumn(slide: Slide, nodes: BlockContent[]): void {
-  const elements = slide.elements;
-  let idx = 0;
+/** Fields carried by the markdown body (rather than the directive) per element type. */
+const BODY_FIELDS: Record<SlideElement['type'], string[]> = {
+  heading: ['content', 'level'],
+  text: ['content'],
+  list: ['items', 'ordered'],
+  code: ['code', 'language'],
+  image: ['url', 'alt'],
+  video: ['url'],
+  html: ['htmlContent'],
+  rectangle: [],
+  circle: [],
+  line: [],
+};
 
-  // First element might be a heading
-  if (elements.length > 0 && elements[0].type === 'heading') {
-    serializeElement(elements[0], nodes);
-    idx = 1;
-  }
+/** Runtime-only fields never written to markdown. */
+const TRANSIENT_FIELDS = new Set(['id', 'cachedUrl']);
 
-  // Left content (element at idx)
-  if (idx < elements.length) {
-    const leftEl = elements[idx];
-    if (leftEl.fragment != null) {
-      nodes.push({ type: 'html', value: `<!-- fragment: ${leftEl.fragment} -->` });
-    }
-    if (leftEl.type === 'list' && leftEl.fragmentPerItem) {
-      nodes.push({ type: 'html', value: '<!-- fragment-items -->' });
-    }
-    serializeElementContent(leftEl, nodes);
-    nodes.push({
-      type: 'html',
-      value: `<!-- position: ${JSON.stringify(leftEl.position)} -->`,
-    });
-    idx++;
-  }
-
-  // Column separator
-  nodes.push({
-    type: 'html',
-    value: '<!-- column-break -->',
-  });
-
-  // Right content (element at idx)
-  if (idx < elements.length) {
-    const rightEl = elements[idx];
-    if (rightEl.fragment != null) {
-      nodes.push({ type: 'html', value: `<!-- fragment: ${rightEl.fragment} -->` });
-    }
-    if (rightEl.type === 'list' && rightEl.fragmentPerItem) {
-      nodes.push({ type: 'html', value: '<!-- fragment-items -->' });
-    }
-    serializeElementContent(rightEl, nodes);
-    nodes.push({
-      type: 'html',
-      value: `<!-- position: ${JSON.stringify(rightEl.position)} -->`,
-    });
-  }
+interface EncodedElement {
+  /** Directive form; `omitPosition` drops the position from the directive JSON. */
+  blocks: (omitPosition: boolean) => string[];
+  /** Plain markdown form (fragment directives + body), or null if impossible. */
+  plain: string[] | null;
 }
 
-/**
- * Serialize a single element to mdast nodes, including position comment.
- */
-function serializeElement(element: SlideElement, nodes: BlockContent[]): void {
-  // Emit fragment directives before the element content
-  if (element.fragment != null) {
-    nodes.push({
-      type: 'html',
-      value: `<!-- fragment: ${element.fragment} -->`,
-    });
-  }
-  if (element.type === 'list' && element.fragmentPerItem) {
-    nodes.push({
-      type: 'html',
-      value: '<!-- fragment-items -->',
-    });
+function encodeElement(element: SlideElement): EncodedElement {
+  const all = element as unknown as Record<string, unknown>;
+  const bodyFields = new Set(BODY_FIELDS[element.type]);
+
+  // Directive props: type first, then position, then everything else not in the body
+  const props: Record<string, unknown> = { type: element.type, position: element.position };
+  const full: Record<string, unknown> = { type: element.type, position: element.position };
+  // Remaining keys in sorted order so output is canonical (idempotent)
+  for (const [key, value] of Object.entries(all).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+    if (value === undefined || TRANSIENT_FIELDS.has(key) || key === 'type' || key === 'position') continue;
+    full[key] = value;
+    if (!bodyFields.has(key)) props[key] = value;
   }
 
-  serializeElementContent(element, nodes);
+  // Fragments use the documented, human-editable directives when representable.
+  const prefix: string[] = [];
+  const { fragment } = element;
+  if (fragment !== undefined && Number.isInteger(fragment) && fragment >= 0) {
+    prefix.push(directive('fragment', String(fragment)));
+    delete props.fragment;
+    delete full.fragment;
+    if (element.type === 'list' && element.fragmentPerItem === true) {
+      prefix.push(directive('fragment-items'));
+      delete props.fragmentPerItem;
+      delete full.fragmentPerItem;
+    }
+  }
 
-  // Position data as HTML comment for round-trip
-  nodes.push({
-    type: 'html',
-    value: `<!-- position: ${JSON.stringify(element.position)} -->`,
-  });
+  const withoutPosition = (obj: Record<string, unknown>, omit: boolean) => {
+    if (!omit) return obj;
+    const { position: _position, ...rest } = obj;
+    return rest;
+  };
+
+  const body = elementBody(element);
+  if (body !== null && body !== '') {
+    const candidate = [...prefix, directive('element', encodeDirectiveJson(props)), body];
+    if (elementRoundTrips(candidate, element)) {
+      return {
+        blocks: (omit) => [...prefix, directive('element', encodeDirectiveJson(withoutPosition(props, omit))), body],
+        plain: [...prefix, body],
+      };
+    }
+  }
+  if (body === '') {
+    // Empty content: the directive alone reads back as empty content.
+    const candidate = [...prefix, directive('element', encodeDirectiveJson(props))];
+    if (elementRoundTrips(candidate, element)) {
+      return {
+        blocks: (omit) => [...prefix, directive('element', encodeDirectiveJson(withoutPosition(props, omit)))],
+        plain: null,
+      };
+    }
+  }
+
+  return {
+    blocks: (omit) => [...prefix, directive('element', encodeDirectiveJson(withoutPosition(full, omit)))],
+    plain: null,
+  };
 }
 
-/**
- * Serialize element content (without position comment).
- */
-function serializeElementContent(element: SlideElement, nodes: BlockContent[]): void {
+/** Readable markdown for an element, or null if it has no markdown form. */
+function elementBody(element: SlideElement): string | null {
   switch (element.type) {
     case 'heading':
-      nodes.push({
-        type: 'heading',
-        depth: element.level as 1 | 2 | 3 | 4 | 5 | 6,
-        children: [{ type: 'text', value: element.content }],
-      });
-      break;
-
+      return `${'#'.repeat(element.level)} ${element.content}`.trimEnd();
     case 'text':
-      nodes.push({
-        type: 'paragraph',
-        children: [{ type: 'text', value: element.content }],
-      });
-      break;
-
+      return element.content;
     case 'list':
-      nodes.push({
-        type: 'list',
-        ordered: element.ordered,
-        spread: false,
-        children: element.items.map((item) => ({
-          type: 'listItem' as const,
-          spread: false,
-          children: [
-            {
-              type: 'paragraph' as const,
-              children: [{ type: 'text' as const, value: item }],
-            },
-          ],
-        })),
-      });
-      break;
-
-    case 'code':
-      nodes.push({
-        type: 'code',
-        lang: element.language,
-        value: element.code,
-      });
-      break;
-
+      return element.items
+        .map((item, i) => {
+          const marker = element.ordered ? `${i + 1}.` : '-';
+          const indent = ' '.repeat(marker.length + 1);
+          return `${marker} ${item.replace(/\n/g, `\n${indent}`)}`.trimEnd();
+        })
+        .join('\n');
+    case 'code': {
+      const longestRun = (element.code.match(/`+/g) ?? []).reduce((max, m) => Math.max(max, m.length), 0);
+      const fence = '`'.repeat(Math.max(3, longestRun + 1));
+      return `${fence}${element.language}\n${element.code}\n${fence}`;
+    }
     case 'image':
-      nodes.push({
-        type: 'paragraph',
-        children: [
-          {
-            type: 'image',
-            url: element.url,
-            alt: element.alt || '',
-          } as PhrasingContent,
-        ],
-      });
-      break;
-
+      return `![${escapeAlt(element.alt ?? '')}](${formatUrl(element.url)})`;
     case 'video':
-      // Videos serialize as image markdown (same syntax, different URL extension)
-      nodes.push({
-        type: 'paragraph',
-        children: [
-          {
-            type: 'image',
-            url: element.url,
-            alt: '',
-          } as PhrasingContent,
-        ],
-      });
-      break;
-
+      return `![](${formatUrl(element.url)})`;
     case 'html':
-      nodes.push({
-        type: 'html',
-        value: element.htmlContent,
-      });
-      break;
-
+      return element.htmlContent;
     case 'rectangle':
     case 'circle':
-    case 'line': {
-      // Shapes have no direct markdown representation, so serialize as HTML comment
-      // This preserves the data for round-trip
-      const shapeData: Record<string, any> = {
-        type: element.type,
-      };
-      if ('fill' in element && element.fill) shapeData.fill = element.fill;
-      if (element.stroke) shapeData.stroke = element.stroke;
-      if (element.strokeWidth) shapeData.strokeWidth = element.strokeWidth;
-      if ('cornerRadius' in element && element.cornerRadius) {
-        shapeData.cornerRadius = element.cornerRadius;
-      }
-      nodes.push({
-        type: 'html',
-        value: `<!-- shape: ${JSON.stringify(shapeData)} -->`,
-      });
-      break;
-    }
+    case 'line':
+      return null;
   }
+}
+
+function escapeAlt(alt: string): string {
+  return alt.replace(/([\\[\]])/g, '\\$1');
+}
+
+function formatUrl(url: string): string {
+  if (url === '' || /[\s()<>]/.test(url)) return `<${url.replace(/([<>\\])/g, '\\$1')}>`;
+  return url;
+}
+
+// ============================================================================
+// Round-trip verification
+// ============================================================================
+
+const SENTINEL = directive(
+  'element',
+  encodeDirectiveJson({ type: 'line', position: { x: 0, y: 0, width: 0, height: 0 } }),
+);
+
+function elementRoundTrips(blocks: string[], element: SlideElement): boolean {
+  try {
+    const doc = [directive('layout', 'freestyle'), ...blocks, SENTINEL].join('\n\n');
+    const { presentation } = parsePresentationSync(doc);
+    const slide = presentation.slides[0];
+    return (
+      presentation.slides.length === 1 &&
+      slide.notes === undefined &&
+      slide.elements.length === 2 &&
+      slide.elements[1].type === 'line' &&
+      sameElement(slide.elements[0], element)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function notesRoundTrip(notes: string): boolean {
+  try {
+    const doc = [directive('layout', 'blank'), '???', notes, '---', directive('layout', 'blank')].join('\n\n');
+    const { presentation } = parsePresentationSync(doc);
+    return (
+      presentation.slides.length === 2 &&
+      presentation.slides[0].notes === notes &&
+      presentation.slides[0].elements.length === 0 &&
+      presentation.slides[1].notes === undefined
+    );
+  } catch {
+    return false;
+  }
+}
+
+function parseSlide(md: string): Slide | null {
+  try {
+    const { presentation, warnings } = parsePresentationSync(md);
+    return presentation.slides.length === 1 && warnings.length === 0 ? presentation.slides[0] : null;
+  } catch {
+    return null;
+  }
+}
+
+function slideRoundTrips(md: string, slide: Slide): boolean {
+  const parsed = parseSlide(md);
+  return (
+    !!parsed &&
+    parsed.layout === slide.layout &&
+    parsed.transition === (slide.transition ?? 'none') &&
+    (parsed.notes ?? undefined) === (slide.notes || undefined) &&
+    parsed.elements.length === slide.elements.length &&
+    parsed.elements.every((el, i) => sameElement(el, slide.elements[i]))
+  );
+}
+
+function samePosition(a: SlideElement['position'], b: SlideElement['position']): boolean {
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+}
+
+/** Compare elements ignoring ids, runtime-only fields and undefined values. */
+export function sameElement(a: SlideElement, b: SlideElement): boolean {
+  return stableStringify(stripTransient(a)) === stableStringify(stripTransient(b));
+}
+
+function stripTransient(el: SlideElement): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(el)) {
+    if (v !== undefined && !TRANSIENT_FIELDS.has(k)) out[k] = v;
+  }
+  return out;
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
 }

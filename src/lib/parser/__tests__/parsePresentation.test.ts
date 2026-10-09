@@ -63,7 +63,7 @@ Subtitle
       const result = await parsePresentation(markdown);
 
       expect(result.slides).toEqual([]);
-      expect(result.schemaVersion).toBe('1.0');
+      expect(result.schemaVersion).toBe('1.1');
       expect(result.id).toBeTruthy();
     });
   });
@@ -348,7 +348,7 @@ Some text`;
 
       const result = await parsePresentation(markdown);
 
-      expect(result.schemaVersion).toBe('1.0');
+      expect(result.schemaVersion).toBe('1.1');
       expect(result.id).toBeTruthy();
       expect(result.title).toBeTruthy();
       expect(result.theme).toBeTruthy();

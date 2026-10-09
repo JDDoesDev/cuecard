@@ -29,9 +29,9 @@ Every slide uses one of these layout presets. The layout is auto-detected from y
 
 ## Markdown Format
 
-Slides are separated by `---`. Metadata uses HTML comment directives.
+Presentations are plain markdown. Slides are separated by `---` (a thematic break on its own line, with blank lines around it). Settings and metadata use HTML comment directives, which other markdown renderers simply hide.
 
-```markdown
+````markdown
 ---
 title: My Presentation
 theme: dark
@@ -40,7 +40,9 @@ theme: dark
 # Welcome
 Subtitle text
 
-<!-- notes: Remember to greet the audience -->
+???
+
+Speaker notes go after a line containing only ???
 
 ---
 
@@ -48,7 +50,6 @@ Subtitle text
 ## Agenda
 - First topic
 - Second topic
-- Third topic
 
 ---
 
@@ -65,25 +66,85 @@ Left column content
 <!-- column-break -->
 
 Right column content
-```
+````
+
+### Frontmatter
+
+Optional YAML at the very top of the file, between `---` lines.
+
+| Key | Meaning |
+|-----|---------|
+| `title` | Presentation title |
+| `theme` | Theme id (e.g. `default`, `dark`) |
+| `fontHeading` / `fontBody` | Presentation-wide heading / body fonts |
+| `aspectRatio` | `16:9`, `4:3` or `16:10` |
+| `schemaVersion` | Written by the app; ignored on import |
+| any other key | Kept as presentation metadata and written back on export |
+
+Plain, quoted (`"..."`, `'...'`) and JSON-style values are supported, as are nested maps/lists and `|` / `>` block scalars. Values containing `:` or `#` should be quoted. Unsupported YAML (anchors, tags) is kept as text with an import warning.
+
+### Speaker Notes
+
+Everything after a line containing only `???` (until the next `---`) is the slide's speaker notes, taken verbatim — notes can contain any markdown. The legacy form `<!-- notes: text -->` is still read.
 
 ### Directives Reference
 
-| Directive | Description |
-|-----------|-------------|
-| `<!-- layout: name -->` | Force a specific layout |
-| `<!-- transition: fade -->` | Slide transition (`fade`, `slide`, `zoom`, `none`) |
-| `<!-- notes: text -->` | Speaker notes |
-| `<!-- position: {"x":10,"y":20,"width":80,"height":50} -->` | Element position (percentages) |
-| `<!-- column-break -->` | Split point for two-column layout |
-| `<!-- fragment: N -->` | Element appears on the Nth click (see below) |
-| `<!-- fragment-items -->` | List items reveal one at a time (see below) |
+| Directive | Scope | Description |
+|-----------|-------|-------------|
+| `<!-- layout: name -->` | slide | Force a specific layout (otherwise inferred) |
+| `<!-- transition: fade -->` | slide | Slide transition (`fade`, `slide`, `zoom`, `none`) |
+| `<!-- notes: text -->` | slide | Speaker notes (legacy; prefer `???`) |
+| `<!-- notes-data: "json string" -->` | slide | Speaker notes as a JSON string; written by export only when notes can't be represented after `???` |
+| `<!-- column-break -->` | slide | Split point for the two-column layout (content before → left, after → right) |
+| `<!-- fragment: N -->` | next element | Element appears on the Nth click |
+| `<!-- fragment-items -->` | next list | List items reveal one per click, starting at the fragment step |
+| `<!-- position: {"x":10,"y":20,"width":80,"height":50} -->` | previous element | Element position in % of the slide (see below) |
+| `<!-- shape: {"type":"rectangle","fill":"#f00"} -->` | element | A shape (`rectangle`, `circle`, `line`) with its properties; combine with `position` |
+| `<!-- element: {...} -->` | next block | Full element description written by export (see below) |
+
+Unknown or invalid directive values (e.g. `<!-- transition: spin -->`) are ignored with an import warning — they never make an import fail. Other HTML comments (author notes, comments meant for other tools) are ignored.
+
+**Position rule:** a `position` directive applies to the element it *follows* (the format older exports use). Only when it appears before the first element of a slide (or of a column after `column-break`) does it apply to the next element. If an element gets more than one position directive, the last one wins.
+
+### Elements and Layouts
+
+Each markdown block becomes one element, in document order: headings, paragraphs (text), lists, fenced code, images, and raw HTML blocks. Tables, block quotes and other blocks become text elements holding their markdown verbatim. An image whose URL is a video file (`.mp4`, `.webm`, `.mov`, …) or a YouTube/Vimeo link becomes a video element.
+
+The layout (inferred or set with `layout:`) only decides **default positions**; it never drops or reorders content. Elements are laid out top-to-bottom in source order and always fit on the slide.
+
+### Lossless Export Format
+
+Markdown export round-trips everything the editor can do. When a slide matches what import would infer anyway, it is exported as plain markdown. Otherwise each element is preceded by an `element` directive carrying its type and any properties markdown can't express (position, fonts, alignment, line height, highlighted lines, image fit, colors, …), followed by the content as normal markdown:
+
+```markdown
+<!-- layout: freestyle -->
+
+<!-- element: {"type":"heading","position":{"x":10,"y":5,"width":80,"height":12},"textAlign":"center"} -->
+
+## Centered heading
+
+<!-- fragment: 1 -->
+
+<!-- element: {"type":"video","position":{"x":20,"y":30,"width":60,"height":50}} -->
+
+![](https://example.com/clip.mp4)
+```
+
+- The block directly after an `element` directive is that element's content. Further blocks before the next directive are imported as separate, automatically positioned elements (with a warning).
+- Content that can't be written as an unambiguous markdown block (e.g. text containing `---` or `???`) is stored inside the directive JSON instead.
+- Shapes have no markdown form, so their directive stands alone.
 
 ## Fragment Animations (Build/Reveal)
 
 Fragments let you reveal elements incrementally during presentation. Press next to step through fragments within a slide before advancing to the next slide.
 
 ### How It Works
+
+Rules for the markdown directives:
+
+- `<!-- fragment: N -->` applies to the next element (or the next `element` block). N is a whole number ≥ 0.
+- `<!-- fragment-items -->` only affects lists. Put it together with `fragment: N` before the list; items then appear on clicks N, N+1, ….
+- An image paragraph containing several images gives the fragment to the first one.
 
 - Elements without a fragment value are visible immediately (step 0)
 - `fragment: 1` means the element appears on the first click
@@ -201,7 +262,7 @@ Click **Fonts** to browse and load Google Fonts.
 ## Import / Export
 
 - **Import Markdown** parses `.md` files into slides with automatic layout inference
-- **Export** options include Markdown (with position/layout metadata) and HTML (self-contained offline file)
+- **Export** options include Markdown (lossless; see [Lossless Export Format](#lossless-export-format)) and HTML (self-contained offline file)
 - **Open/Save** uses the File System Access API for native `.json` presentation files
 
 ## Tech Stack

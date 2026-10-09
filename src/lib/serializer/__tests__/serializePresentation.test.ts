@@ -153,7 +153,7 @@ describe('serializePresentation', () => {
       expect(markdown).toContain('---');
       expect(markdown).toContain('title: My Deck');
       expect(markdown).toContain('theme: dark');
-      expect(markdown).toContain('schemaVersion: "1.0"');
+      expect(markdown).toContain('schemaVersion: "1.1"');
     });
 
     it('should not include frontmatter if using defaults', () => {
@@ -238,7 +238,7 @@ describe('serializePresentation', () => {
 
       expect(markdown).toContain('Description');
       expect(markdown).toContain('![](photo.jpg)');
-      expect(markdown).toContain('<!-- position:');
+      expect(markdown).toContain('<!-- element: {"type":"text","position":');
     });
   });
 
@@ -258,7 +258,7 @@ describe('serializePresentation', () => {
       const markdown = serializePresentation(presentation);
 
       expect(markdown).toContain('Free text');
-      expect(markdown).toContain('<!-- position:');
+      expect(markdown).toContain('<!-- element: {"type":"text","position":');
     });
   });
 
@@ -385,7 +385,8 @@ describe('serializePresentation', () => {
 
       expect(markdown).toContain('Left side');
       expect(markdown).toContain('Right side');
-      expect(markdown).toContain('<!-- column-break -->');
+      // Columns are encoded by explicit element positions (lossless), not by a column-break marker
+      expect(markdown).toContain('"position":{"x":52,"y":20,"width":45,"height":75}');
     });
 
     it('should serialize two-column slide with title', () => {

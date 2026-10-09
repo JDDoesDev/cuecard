@@ -1,178 +1,294 @@
 import type { Root, Content } from 'mdast';
 import type { Plugin } from 'unified';
-import { unified } from 'unified';
-import remarkStringify from 'remark-stringify';
-import { inferLayout } from './inferLayout';
+import type { Slide } from '@/types/slide';
+import type { ElementPosition } from '@/types/slide';
+import { buildSlideElements, isValidLayout, parsePosition, type SlideItem } from './inferLayout';
+import { isOnlyComments, parseDirectives } from './directives';
+
+const TRANSITIONS = ['fade', 'slide', 'zoom', 'none'] as const;
+type Transition = (typeof TRANSITIONS)[number];
 
 /**
  * Custom remark plugin that splits markdown AST by thematicBreak (---) nodes
- * and converts each section into a slide object.
+ * and converts each section into a slide object (attached as `file.data.slides`).
  *
- * The plugin walks the AST children and groups nodes between thematicBreak
- * markers into separate slides. Each slide gets layout inference, UUID, and
- * default transition.
- *
- * Speaker notes are extracted from HTML comment nodes matching:
- * <!-- notes: ... -->
+ * The original markdown source must be available as `file.value` so that
+ * text content and speaker notes can be taken verbatim from the source.
+ * Non-fatal problems are collected in `file.data.warnings`.
  */
 export const remarkSlidePlugin: Plugin<[], Root> = function () {
   return (tree, file) => {
-    const slides: any[] = [];
-    let currentSlideNodes: Content[] = [];
-
-    // Process root children and split by thematicBreak
-    for (const node of tree.children) {
-      // Skip yaml frontmatter nodes (handled separately)
-      if (node.type === 'yaml') {
-        continue;
-      }
-
-      if (node.type === 'thematicBreak') {
-        // Found separator - finalize current slide
-        if (currentSlideNodes.length > 0) {
-          slides.push(createSlide(currentSlideNodes));
-          currentSlideNodes = [];
-        }
-      } else {
-        currentSlideNodes.push(node);
-      }
-    }
-
-    // Don't forget the last slide
-    if (currentSlideNodes.length > 0) {
-      slides.push(createSlide(currentSlideNodes));
-    }
-
-    // Attach slides to file data
-    file.data.slides = slides;
+    const source = typeof file.value === 'string' ? file.value : String(file.value ?? '');
+    const warnings: string[] = Array.isArray(file.data.warnings) ? (file.data.warnings as string[]) : [];
+    file.data.warnings = warnings;
+    file.data.slides = splitSlides(tree, source, warnings);
   };
 };
 
 /**
- * Create a slide object from an array of AST nodes.
- * Now uses the universal element model.
+ * Split a parsed markdown tree into slides.
+ *
+ * @param tree - mdast root parsed from `source`
+ * @param source - the exact markdown string that was parsed
+ * @param warnings - collector for non-fatal problems (bad directive values, ...)
  */
-function createSlide(nodes: Content[]): any {
-  // Extract speaker notes, position data, transition, explicit layout, and fragment data
-  let notes: string | undefined;
-  let transition: 'fade' | 'slide' | 'zoom' | 'none' = 'none';
-  let explicitLayout: string | undefined;
-  const positionData: any[] = [];
-  const contentNodes: Content[] = [];
+export function splitSlides(tree: Root, source: string, warnings: string[]): Slide[] {
+  const slides: Slide[] = [];
+  let current: Content[] = [];
 
-  // Fragment data pending application to the next content element
+  const flush = (endOffset: number) => {
+    if (current.length > 0) {
+      slides.push(createSlide(current, endOffset, source, warnings));
+      current = [];
+    }
+  };
+
+  for (const node of tree.children) {
+    if (node.type === 'yaml') continue; // frontmatter handled separately
+    if (node.type === 'thematicBreak') {
+      flush(node.position?.start.offset ?? source.length);
+    } else {
+      current.push(node);
+    }
+  }
+  flush(source.length);
+
+  return slides;
+}
+
+function nodeStart(node: Content): number | undefined {
+  return node.position?.start.offset;
+}
+
+function nodeEnd(node: Content): number | undefined {
+  return node.position?.end.offset;
+}
+
+/** Strip leading blank lines and trailing whitespace from a block of source (linear time). */
+function trimBlock(text: string): string {
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '\n') start = i + 1;
+    else if (c !== ' ' && c !== '\t') break;
+  }
+  return text.slice(start).trimEnd();
+}
+
+/**
+ * If `node` is a `???` notes separator paragraph, return the source offset where
+ * the notes begin (the separator may be directly followed by notes text on
+ * the next line, without a blank line). Otherwise null.
+ */
+function notesSeparatorEnd(node: Content, source: string): number | null {
+  if (node.type !== 'paragraph') return null;
+  const start = nodeStart(node);
+  const end = nodeEnd(node);
+  if (start === undefined || end === undefined || !source) {
+    const children = (node as any).children ?? [];
+    const isSep = children.length === 1 && children[0].type === 'text' && children[0].value.trim() === '???';
+    return isSep ? (end ?? 0) : null;
+  }
+  const text = source.slice(start, end);
+  const newline = text.indexOf('\n');
+  const firstLine = newline === -1 ? text : text.slice(0, newline);
+  if (firstLine.trim() !== '???') return null;
+  return newline === -1 ? end : start + newline + 1;
+}
+
+/** Source slice of a node including leading indentation on its first line. */
+function verbatimSlice(node: Content, source: string): string {
+  const start = nodeStart(node);
+  const end = nodeEnd(node);
+  if (start === undefined || end === undefined) return '';
+  let lineStart = start;
+  while (lineStart > 0 && (source[lineStart - 1] === ' ' || source[lineStart - 1] === '\t')) lineStart--;
+  return source.slice(lineStart === 0 || source[lineStart - 1] === '\n' ? lineStart : start, end);
+}
+
+type SegmentItem = Extract<SlideItem, { kind: 'segment' }>;
+
+/**
+ * Create a slide object from an array of AST nodes.
+ */
+function createSlide(nodes: Content[], endOffset: number, source: string, warnings: string[]): Slide {
+  let transition: Transition = 'none';
+  let explicitLayout: string | undefined;
+  const notesParts: string[] = [];
+
+  // Speaker notes after a `???` separator are taken verbatim from the source.
+  let contentNodes = nodes;
+  let separatorNotes: string | undefined;
+  for (let i = 0; i < nodes.length; i++) {
+    const notesStart = notesSeparatorEnd(nodes[i], source);
+    if (notesStart !== null) {
+      contentNodes = nodes.slice(0, i);
+      if (source) separatorNotes = trimBlock(source.slice(notesStart, endOffset));
+      break;
+    }
+  }
+
+  const items: SlideItem[] = [];
+  let segment: SegmentItem | null = null;
+  let lastContent: Extract<SlideItem, { kind: 'node' | 'shape' }> | null = null;
   let pendingFragment: number | undefined;
   let pendingFragmentItems = false;
+  let pendingPosition: ElementPosition | undefined;
 
-  for (const node of nodes) {
-    if (node.type === 'html' && (node as any).value) {
-      const htmlValue = (node as any).value as string;
+  const applyPending = (item: Extract<SlideItem, { kind: 'node' | 'shape' }>) => {
+    if (pendingFragment !== undefined) item.fragment = pendingFragment;
+    if (pendingFragmentItems && item.kind === 'node') item.fragmentPerItem = true;
+    if (pendingPosition) item.position = pendingPosition;
+    pendingFragment = undefined;
+    pendingFragmentItems = false;
+    pendingPosition = undefined;
+  };
 
-      // Extract speaker notes
-      const notesMatch = htmlValue.match(/<!--\s*notes:\s*(.+?)\s*-->/s);
-      if (notesMatch) {
-        notes = notesMatch[1].trim();
-        continue; // Don't include notes comment in content
+  contentNodes.forEach((node) => {
+    const htmlValue = node.type === 'html' ? ((node as any).value ?? '') : '';
+    const directives = node.type === 'html' ? parseDirectives(htmlValue) : null;
+
+    if (!directives) {
+      // The first node after an element directive is that element's body.
+      if (segment && segment.nodes.length === 0) {
+        segment.nodes.push(node);
+        segment.body = verbatimSlice(node, source);
+        return;
       }
-
-      // Extract transition
-      const transitionMatch = htmlValue.match(/<!--\s*transition:\s*(\w+)\s*-->/);
-      if (transitionMatch) {
-        transition = transitionMatch[1] as any;
-        continue; // Don't include transition comment in content
+      // Plain HTML comments (author notes, other tools' directives such as
+      // Marp's `<!-- _class: lead -->`) are not slide content.
+      if (node.type === 'html' && isOnlyComments(htmlValue)) return;
+      if (segment) {
+        // Content added after an element body (e.g. hand edits) becomes its own element.
+        segment.extra.push(node);
+        return;
       }
+      const item: Extract<SlideItem, { kind: 'node' }> = { kind: 'node', node };
+      applyPending(item);
+      items.push(item);
+      lastContent = item;
+      return;
+    }
 
-      // Extract explicit layout directive
-      const layoutMatch = htmlValue.match(/<!--\s*layout:\s*([\w-]+)\s*-->/);
-      if (layoutMatch) {
-        explicitLayout = layoutMatch[1];
-        continue; // Don't include layout comment in content
-      }
-
-      // Extract position data
-      const positionMatch = htmlValue.match(/<!--\s*position:\s*(.+?)\s*-->/s);
-      if (positionMatch) {
-        try {
-          const position = JSON.parse(positionMatch[1]);
-          positionData.push(position);
-          continue; // Don't include position comment in content
-        } catch (e) {
-          // Invalid JSON, skip
+    for (const { name, arg } of directives) {
+      switch (name) {
+        case 'element': {
+          let props: Record<string, unknown> | null = null;
+          try {
+            const parsed = JSON.parse(arg);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) props = parsed;
+          } catch {
+            // handled below
+          }
+          if (!props) warnings.push(`Invalid element directive ignored: ${arg.slice(0, 80)}`);
+          // `<!-- fragment: N -->` / `<!-- fragment-items -->` may precede an element directive
+          if (props && pendingFragment !== undefined && props.fragment === undefined) {
+            props.fragment = pendingFragment;
+          }
+          if (props && pendingFragmentItems && props.fragmentPerItem === undefined) {
+            props.fragmentPerItem = true;
+          }
+          pendingFragment = undefined;
+          pendingFragmentItems = false;
+          pendingPosition = undefined;
+          segment = { kind: 'segment', props, nodes: [], body: '', extra: [] };
+          items.push(segment);
+          lastContent = null;
+          break;
+        }
+        case 'layout':
+          if (isValidLayout(arg)) explicitLayout = arg;
+          else warnings.push(`Unknown layout "${arg}" ignored; layout will be inferred.`);
+          break;
+        case 'transition':
+          if ((TRANSITIONS as readonly string[]).includes(arg)) transition = arg as Transition;
+          else warnings.push(`Unknown transition "${arg}" ignored.`);
+          break;
+        case 'notes':
+          if (arg) notesParts.push(arg);
+          break;
+        case 'notes-data':
+          try {
+            const value = JSON.parse(arg);
+            if (typeof value === 'string') notesParts.push(value);
+            else warnings.push('Invalid notes-data directive ignored.');
+          } catch {
+            warnings.push('Invalid notes-data directive ignored.');
+          }
+          break;
+        case 'fragment':
+          if (/^\d+$/.test(arg)) pendingFragment = parseInt(arg, 10);
+          else warnings.push(`Invalid fragment "${arg}" ignored.`);
+          break;
+        case 'fragment-items':
+          pendingFragmentItems = true;
+          break;
+        case 'position': {
+          let pos: ElementPosition | undefined;
+          try {
+            pos = parsePosition(JSON.parse(arg));
+          } catch {
+            pos = undefined;
+          }
+          if (!pos) {
+            warnings.push(`Invalid position directive ignored: ${arg.slice(0, 80)}`);
+            break;
+          }
+          if (segment) {
+            warnings.push('Position directive inside an element block ignored (use the element directive).');
+            break;
+          }
+          // A position directive applies to the element it FOLLOWS (legacy
+          // export format). Only before the first element of a slide (or
+          // column) does it apply to the next element instead.
+          if (lastContent) {
+            if (lastContent.position) warnings.push('Element has more than one position directive; the last one wins.');
+            lastContent.position = pos;
+          } else {
+            pendingPosition = pos;
+          }
+          break;
+        }
+        case 'column-break':
+          segment = null;
+          lastContent = null;
+          items.push({ kind: 'column-break' });
+          break;
+        case 'shape': {
+          let data: Record<string, unknown> | null = null;
+          try {
+            const parsed = JSON.parse(arg);
+            if (parsed && typeof parsed === 'object' && ['rectangle', 'circle', 'line'].includes(parsed.type)) {
+              data = parsed;
+            }
+          } catch {
+            // handled below
+          }
+          if (!data) {
+            warnings.push(`Invalid shape directive ignored: ${arg.slice(0, 80)}`);
+            break;
+          }
+          segment = null;
+          const item: Extract<SlideItem, { kind: 'shape' }> = { kind: 'shape', data };
+          applyPending(item);
+          items.push(item);
+          lastContent = item;
+          break;
         }
       }
-
-      // Extract fragment directive
-      const fragmentMatch = htmlValue.match(/<!--\s*fragment:\s*(\d+)\s*-->/);
-      if (fragmentMatch) {
-        pendingFragment = parseInt(fragmentMatch[1], 10);
-        continue;
-      }
-
-      // Extract fragment-items directive
-      if (/<!--\s*fragment-items\s*-->/.test(htmlValue)) {
-        pendingFragmentItems = true;
-        continue;
-      }
-
-      // Extract column-break marker
-      if (htmlValue.includes('<!-- column-break -->')) {
-        contentNodes.push(node);
-        continue;
-      }
     }
+  });
 
-    // This is a content node - apply any pending fragment data as custom properties on the node
-    if (pendingFragment !== undefined || pendingFragmentItems) {
-      if (pendingFragment !== undefined) (node as any)._fragment = pendingFragment;
-      if (pendingFragmentItems) (node as any)._fragmentPerItem = true;
-      pendingFragment = undefined;
-      pendingFragmentItems = false;
-    }
+  if (separatorNotes) notesParts.push(separatorNotes);
 
-    contentNodes.push(node);
-  }
+  const inference = buildSlideElements(items, explicitLayout, source, warnings);
 
-  // Check for ??? separator in contentNodes — everything after it is speaker notes
-  const separatorIndex = contentNodes.findIndex(
-    (n) =>
-      n.type === 'paragraph' &&
-      'children' in n &&
-      (n as any).children.length === 1 &&
-      (n as any).children[0].type === 'text' &&
-      (n as any).children[0].value.trim() === '???',
-  );
-
-  let slideContentNodes = contentNodes;
-  if (separatorIndex !== -1) {
-    slideContentNodes = contentNodes.slice(0, separatorIndex);
-    const notesNodes = contentNodes.slice(separatorIndex + 1);
-    if (notesNodes.length > 0) {
-      const notesTree: Root = { type: 'root', children: notesNodes as any };
-      const notesMarkdown = unified()
-        .use(remarkStringify)
-        .stringify(notesTree)
-        .trim();
-      if (notesMarkdown) {
-        notes = notesMarkdown;
-      }
-    }
-  }
-
-  // Infer layout and get elements from content nodes
-  const inference = inferLayout(slideContentNodes, positionData, explicitLayout);
-
-  // Build slide object with universal element model
-  const slide: any = {
+  const slide: Slide = {
     id: crypto.randomUUID(),
     layout: inference.layout,
     transition,
     elements: inference.elements,
   };
-
-  // Add notes if present
-  if (notes) {
-    slide.notes = notes;
-  }
-
+  if (notesParts.length > 0) slide.notes = notesParts.join('\n\n');
   return slide;
 }

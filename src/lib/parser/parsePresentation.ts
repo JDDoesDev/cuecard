@@ -3,52 +3,75 @@ import remarkParse from 'remark-parse';
 import remarkFrontmatter from 'remark-frontmatter';
 import remarkGfm from 'remark-gfm';
 import type { Root } from 'mdast';
-import { visit } from 'unist-util-visit';
-import { remarkSlidePlugin } from './remarkSlidePlugin';
-import { PresentationSchema, type Presentation } from '../../types/presentation';
+import { splitSlides } from './remarkSlidePlugin';
+import { parseFrontmatter } from './frontmatter';
+import { CURRENT_SCHEMA_VERSION, PresentationSchema, type AspectRatio, type Presentation } from '../../types/presentation';
+
+export interface ParseResult {
+  presentation: Presentation;
+  /** Non-fatal problems found while parsing (invalid directive values, etc.). */
+  warnings: string[];
+}
+
+const ASPECT_RATIOS: readonly AspectRatio[] = ['16:9', '4:3', '16:10'];
+
+/** Frontmatter keys mapped to Presentation fields (everything else is metadata). */
+export const RESERVED_FRONTMATTER_KEYS = [
+  'title',
+  'theme',
+  'schemaVersion',
+  'fontHeading',
+  'fontBody',
+  'aspectRatio',
+] as const;
 
 /**
  * Parse a markdown string into a validated Presentation object.
  *
- * This is the main entry point for the markdown-to-JSON conversion pipeline.
- * It uses unified/remark to parse markdown, extract frontmatter, split slides
- * by --- separators, infer layout types, and validate the final structure.
+ * Invalid directive values never fail the import; they are ignored and
+ * reported via `console.warn`. Use `parsePresentationWithWarnings` to get
+ * the warnings programmatically.
  *
  * @param markdown - Raw markdown string with optional frontmatter and --- slide separators
  * @returns Promise resolving to a validated Presentation object
  */
 export async function parsePresentation(markdown: string): Promise<Presentation> {
-  // Handle empty input
+  const { presentation, warnings } = parsePresentationSync(markdown);
+  if (warnings.length > 0) {
+    console.warn(`Markdown import: ${warnings.length} warning(s)\n- ${warnings.join('\n- ')}`);
+  }
+  return presentation;
+}
+
+/**
+ * Like `parsePresentation`, but returns the collected warnings instead of logging them.
+ */
+export async function parsePresentationWithWarnings(markdown: string): Promise<ParseResult> {
+  return parsePresentationSync(markdown);
+}
+
+/**
+ * Synchronous parse core (the pipeline has no async steps).
+ */
+export function parsePresentationSync(markdown: string): ParseResult {
+  const warnings: string[] = [];
+
   if (!markdown || markdown.trim() === '') {
-    return createEmptyPresentation();
+    return { presentation: createEmptyPresentation(), warnings };
   }
 
-  // Build unified pipeline
-  const processor = unified()
-    .use(remarkParse)
-    .use(remarkGfm)
-    .use(remarkFrontmatter, ['yaml'])
-    .use(remarkSlidePlugin);
+  // Normalize BOM and line endings so offsets, regexes and frontmatter work uniformly.
+  const source = markdown.replace(/^﻿/, '').replace(/\r\n?/g, '\n');
 
-  // Parse markdown to AST
-  const tree = processor.parse(markdown) as Root;
+  const processor = unified().use(remarkParse).use(remarkGfm).use(remarkFrontmatter, ['yaml']);
+  const tree = processor.parse(source) as Root;
 
-  // Create a file object to hold data
-  const file = { data: {} } as any;
+  const slides = splitSlides(tree, source, warnings);
+  const frontmatter = extractFrontmatter(tree, warnings);
 
-  // Run transformers (plugins) on the tree
-  await processor.run(tree, file);
-
-  // Extract slides from file data (attached by remarkSlidePlugin)
-  const slides = (file.data.slides as any[]) || [];
-
-  // Extract frontmatter
-  const frontmatter = extractFrontmatter(tree);
-
-  // Build presentation object
   const now = new Date().toISOString();
   const presentation: Presentation = {
-    schemaVersion: '1.0',
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     id: crypto.randomUUID(),
     title: frontmatter.title || 'Untitled Presentation',
     theme: frontmatter.theme || 'default',
@@ -57,54 +80,56 @@ export async function parsePresentation(markdown: string): Promise<Presentation>
     createdAt: now,
     updatedAt: now,
   };
+  if (frontmatter.fontHeading) presentation.fontHeading = frontmatter.fontHeading;
+  if (frontmatter.fontBody) presentation.fontBody = frontmatter.fontBody;
+  if (frontmatter.aspectRatio) presentation.aspectRatio = frontmatter.aspectRatio;
 
   // Validate with Zod schema before returning
-  return PresentationSchema.parse(presentation);
+  return { presentation: PresentationSchema.parse(presentation), warnings };
 }
 
-/**
- * Extract frontmatter YAML as key-value object
- */
-function extractFrontmatter(tree: Root): {
+interface FrontmatterFields {
   title?: string;
   theme?: string;
+  fontHeading?: string;
+  fontBody?: string;
+  aspectRatio?: AspectRatio;
   metadata?: Record<string, unknown>;
-} {
-  let frontmatter: Record<string, unknown> = {};
+}
 
-  visit(tree, 'yaml', (node: any) => {
-    if (node.value) {
-      frontmatter = parseYaml(node.value);
-    }
-  });
-
-  // Remove known presentation fields from metadata
-  const { title, theme, schemaVersion, ...metadata } = frontmatter;
-
-  return {
-    title: title as string | undefined,
-    theme: theme as string | undefined,
-    metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
-  };
+function asString(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  return typeof value === 'string' ? value : String(value);
 }
 
 /**
- * Simple YAML parser for frontmatter (key: value pairs)
- * This is intentionally simple - only handles basic key-value pairs
+ * Extract frontmatter YAML as presentation fields + metadata
  */
-function parseYaml(yamlString: string): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
+function extractFrontmatter(tree: Root, warnings: string[]): FrontmatterFields {
+  const yamlNode = tree.children.find((n) => n.type === 'yaml') as { value?: string } | undefined;
+  if (!yamlNode?.value) return {};
 
-  const lines = yamlString.split('\n');
-  for (const line of lines) {
-    const match = line.match(/^(\w+):\s*(.+)$/);
-    if (match) {
-      const [, key, value] = match;
-      result[key] = value.trim();
+  const data = parseFrontmatter(yamlNode.value, warnings);
+  const { title, theme, schemaVersion: _schemaVersion, fontHeading, fontBody, aspectRatio, ...metadata } = data;
+
+  const fields: FrontmatterFields = {
+    title: asString(title),
+    theme: asString(theme),
+    fontHeading: asString(fontHeading),
+    fontBody: asString(fontBody),
+    metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+  };
+
+  if (aspectRatio !== undefined && aspectRatio !== null) {
+    const ratio = asString(aspectRatio);
+    if (ratio && (ASPECT_RATIOS as readonly string[]).includes(ratio)) {
+      fields.aspectRatio = ratio as AspectRatio;
+    } else {
+      warnings.push(`Unknown aspectRatio "${ratio}" ignored.`);
     }
   }
 
-  return result;
+  return fields;
 }
 
 /**
@@ -114,7 +139,7 @@ function createEmptyPresentation(): Presentation {
   const now = new Date().toISOString();
 
   return {
-    schemaVersion: '1.0',
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     id: crypto.randomUUID(),
     title: 'Untitled Presentation',
     theme: 'default',
