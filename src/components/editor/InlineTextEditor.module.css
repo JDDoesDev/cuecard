@@ -1,0 +1,55 @@
+/* ============================================================================
+   InlineTextEditor — in-place rich text editing on the slide canvas.
+   Typography comes from ElementRenderer's classes (applied by the
+   InlineSurface extension); these rules only neutralise editor-specific
+   differences so editing looks exactly like the rendered element.
+   ============================================================================ */
+
+/* EditorContent wrapper: spans the element box like the rendered element */
+.host {
+  width: 100%;
+  min-width: 0;
+  cursor: text;
+}
+
+/* ProseMirror root */
+.surface {
+  width: 100%;
+  outline: none;
+  /* Tiptap's base CSS disables ligatures; the renderer doesn't */
+  font-variant-ligatures: inherit;
+  font-feature-settings: inherit;
+  caret-color: var(--color-accent, currentColor);
+}
+
+.surface:focus-visible {
+  outline: none;
+}
+
+/* Tiptap wraps list item text in <p>; the renderer puts it in the <li> */
+.surface li > p {
+  margin: 0;
+}
+
+.surface [data-marker-inside] > li > p:first-child {
+  display: inline;
+}
+
+.surface :global(.is-editor-empty):first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: currentColor;
+  opacity: 0.4;
+}
+
+/* Bubble toolbar host: fixed layer above the canvas (never clipped by it) */
+.bubbleLayer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  z-index: 1000;
+}

@@ -10,6 +10,8 @@ interface AddElementToolbarProps {
   slideIndex: number;
   showGrid: boolean;
   onGridToggle: () => void;
+  /** Called after an element was added (e.g. to select it / start editing text). */
+  onElementAdded?: (element: SlideElement) => void;
 }
 
 /**
@@ -17,7 +19,7 @@ interface AddElementToolbarProps {
  * Provides buttons for 7 element types: text, image, video, code, rectangle, circle, line.
  * Also includes grid toggle control.
  */
-export function AddElementToolbar({ slideIndex, showGrid, onGridToggle }: AddElementToolbarProps) {
+export function AddElementToolbar({ slideIndex, showGrid, onGridToggle, onElementAdded }: AddElementToolbarProps) {
   const store = usePresentationStore();
   const [imagePopoverOpen, setImagePopoverOpen] = useState(false);
   const [imageTab, setImageTab] = useState<'upload' | 'url'>('upload');
@@ -26,6 +28,7 @@ export function AddElementToolbar({ slideIndex, showGrid, onGridToggle }: AddEle
 
   const addElement = (element: SlideElement) => {
     store.addElement(slideIndex, element);
+    onElementAdded?.(element);
   };
 
   // Element creation functions with sensible defaults

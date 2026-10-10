@@ -1,10 +1,33 @@
-import { useCallback, useRef, useState, useEffect, useReducer } from 'react';
+import { useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import type { Editor } from '@tiptap/react';
-import { applyEditorTextAlign } from '@/lib/editor/editorTextAlign';
+import {
+  getActiveFormats,
+  getAvailableFonts,
+  toggleBold,
+  toggleItalic,
+  toggleUnderline,
+  toggleStrike,
+  toggleCode,
+  toggleSubscript,
+  toggleSuperscript,
+  setTextColor,
+  setHighlight,
+  setFontSize,
+  setFontFamily,
+  setLink,
+  unsetLink,
+  clearFormatting,
+} from '@/lib/editor/editorCommands';
+import { fontFamilyCss } from '@/lib/editor/fontFamily';
+import { LinkIcon, CodeIcon, ClearFormatIcon } from './toolbarIcons';
 import styles from './EditorFormatToolbar.module.css';
 
 interface EditorFormatToolbarProps {
   editor: Editor;
+  /** Slot: extra inline-format controls (engine features), rendered before "Clear formatting". */
+  extras?: ReactNode;
+  /** Slot: open an external link dialog instead of the built-in URL popover. */
+  onRequestLink?: (editor: Editor) => void;
 }
 
 const FONT_SIZES = [
@@ -25,102 +48,190 @@ const HIGHLIGHT_COLORS = [
   'rgba(96, 125, 140, 0.6)',
 ];
 
-export function EditorFormatToolbar({ editor }: EditorFormatToolbarProps) {
-  const [showColorPicker, setShowColorPicker] = useState(false);
-  const [showHighlightPicker, setShowHighlightPicker] = useState(false);
-  const [showFontSize, setShowFontSize] = useState(false);
-  const toolbarRef = useRef<HTMLDivElement>(null);
+const NONE_SWATCH = 'linear-gradient(135deg, #fff 45%, #e74c3c 50%, #fff 55%)';
 
-  // The editor is created with shouldRerenderOnTransaction: false, so subscribe
-  // explicitly to keep active states (bold, alignment, …) in sync.
+type Popover = 'font' | 'size' | 'color' | 'highlight' | 'link' | null;
+
+/** Re-render on every editor transaction (the editor is created with shouldRerenderOnTransaction: false). */
+export function useEditorTransactions(editor: Editor | null) {
   const [, forceRender] = useReducer((n: number) => n + 1, 0);
   useEffect(() => {
+    if (!editor) return;
     editor.on('transaction', forceRender);
+    editor.on('selectionUpdate', forceRender);
     return () => {
       editor.off('transaction', forceRender);
+      editor.off('selectionUpdate', forceRender);
     };
   }, [editor]);
+}
 
-  /**
-   * Text boxes align as a whole: with a collapsed cursor, apply to every block
-   * of the element; with a range selection, apply to the selected blocks.
-   */
-  const setAlign = useCallback(
-    (align: 'left' | 'center' | 'right' | 'justify') => {
-      applyEditorTextAlign(editor, align);
-    },
-    [editor]
-  );
-  const isAlignActive = (align: 'left' | 'center' | 'right' | 'justify') =>
-    align === 'left'
-      ? !['center', 'right', 'justify'].some((a) => editor.isActive({ textAlign: a }))
-      : editor.isActive({ textAlign: align });
+/**
+ * Inline formatting controls for the bubble toolbar shown over a text
+ * selection while editing a text element in place.
+ */
+export function EditorFormatToolbar({ editor, extras, onRequestLink }: EditorFormatToolbarProps) {
+  const [open, setOpen] = useState<Popover>(null);
+  const [linkDraft, setLinkDraft] = useState('');
+  const [linkError, setLinkError] = useState(false);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  useEditorTransactions(editor);
 
   // Close popovers on outside click
   useEffect(() => {
+    if (!open) return;
     const handleClickOutside = (e: MouseEvent) => {
-      if (toolbarRef.current && !toolbarRef.current.contains(e.target as Node)) {
-        setShowColorPicker(false);
-        setShowHighlightPicker(false);
-        setShowFontSize(false);
-      }
+      if (toolbarRef.current && !toolbarRef.current.contains(e.target as Node)) setOpen(null);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [open]);
 
-  const btn = useCallback(
-    (
-      label: string,
-      action: () => void,
-      isActive: boolean,
-      title: string,
-      style?: React.CSSProperties
-    ) => (
-      <button
-        type="button"
-        key={title}
-        className={`${styles.btn} ${isActive ? styles.active : ''}`}
-        onClick={(e) => {
-          e.preventDefault();
-          action();
-        }}
-        title={title}
-        style={style}
-      >
-        {label}
-      </button>
-    ),
-    []
+  const toggle = (popover: Exclude<Popover, null>) => setOpen((cur) => (cur === popover ? null : popover));
+
+  const btn = (
+    label: ReactNode,
+    action: () => void,
+    isActive: boolean | undefined,
+    name: string,
+    shortcut?: string,
+    style?: React.CSSProperties
+  ) => (
+    <button
+      type="button"
+      key={name}
+      className={`${styles.btn} ${isActive ? styles.active : ''}`}
+      onClick={action}
+      aria-label={name}
+      aria-pressed={isActive}
+      title={shortcut ? `${name} (${shortcut})` : name}
+      style={style}
+    >
+      {label}
+    </button>
   );
 
-  const currentFontSize =
-    (editor.getAttributes('textStyle').fontSize as string) || '';
+  const formats = getActiveFormats(editor);
+  const currentFontSize = formats.fontSize ?? '';
+  const currentColor = formats.color ?? '';
+  const currentHighlight = formats.highlight ?? '';
+  const currentFont = formats.fontFamily;
+  const hasLink = !!formats.link;
+
+  const openLink = () => {
+    if (onRequestLink) {
+      setOpen(null);
+      onRequestLink(editor);
+      return;
+    }
+    setLinkDraft(formats.link?.href ?? '');
+    setLinkError(false);
+    toggle('link');
+  };
+
+  const applyLink = () => {
+    if (!linkDraft.trim()) {
+      unsetLink(editor);
+      setOpen(null);
+      return;
+    }
+    // setLink normalizes ("example.com" → https://…) and rejects unsafe URLs
+    if (!setLink(editor, linkDraft)) {
+      setLinkError(true);
+      return;
+    }
+    setOpen(null);
+  };
 
   return (
-    <div ref={toolbarRef} className={styles.toolbar}>
-      {/* Font Size */}
+    <div
+      ref={toolbarRef}
+      className={styles.toolbar}
+      role="toolbar"
+      aria-label="Text formatting"
+      // Keep focus (and the text selection) in the editor while using the toolbar
+      onMouseDown={(e) => {
+        const target = e.target as HTMLElement;
+        if (!target.closest('input, select, textarea')) e.preventDefault();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape' && open) {
+          e.stopPropagation();
+          setOpen(null);
+          editor.commands.focus();
+        }
+      }}
+    >
+      {/* Font family (per selection) */}
+      <div className={styles.popoverWrap}>
+        <button
+          type="button"
+          className={`${styles.sizeBtn} ${styles.fontBtn}`}
+          onClick={() => toggle('font')}
+          aria-label="Font"
+          aria-haspopup="menu"
+          aria-expanded={open === 'font'}
+          title={currentFont ? `Font: ${currentFont}` : 'Font'}
+          style={currentFont ? { fontFamily: fontFamilyCss(currentFont) } : undefined}
+        >
+          <span className={styles.fontName}>{currentFont ?? 'Font'}</span>
+          <span className={styles.caret} aria-hidden="true">▾</span>
+        </button>
+        {open === 'font' && (
+          <div className={`${styles.popover} ${styles.fontPopover}`} role="menu" aria-label="Font">
+            <button
+              type="button"
+              role="menuitem"
+              className={`${styles.popoverItem} ${!currentFont ? styles.active : ''}`}
+              onClick={() => {
+                setFontFamily(editor, null);
+                setOpen(null);
+              }}
+            >
+              Default
+            </button>
+            {getAvailableFonts().map((font) => (
+              <button
+                key={font}
+                type="button"
+                role="menuitem"
+                className={`${styles.popoverItem} ${currentFont === font ? styles.active : ''}`}
+                style={{ fontFamily: fontFamilyCss(font) }}
+                onClick={() => {
+                  setFontFamily(editor, font);
+                  setOpen(null);
+                }}
+              >
+                {font}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Font size */}
       <div className={styles.popoverWrap}>
         <button
           type="button"
           className={styles.sizeBtn}
-          onClick={() => {
-            setShowFontSize(!showFontSize);
-            setShowColorPicker(false);
-            setShowHighlightPicker(false);
-          }}
+          onClick={() => toggle('size')}
+          aria-label="Font size"
+          aria-haspopup="menu"
+          aria-expanded={open === 'size'}
           title="Font size"
         >
-          {currentFontSize || 'Size'}
+          {currentFontSize ? parseInt(currentFontSize, 10) : 'Size'}
+          <span className={styles.caret} aria-hidden="true">▾</span>
         </button>
-        {showFontSize && (
-          <div className={styles.popover}>
+        {open === 'size' && (
+          <div className={styles.popover} role="menu" aria-label="Font size">
             <button
               type="button"
-              className={styles.popoverItem}
+              role="menuitem"
+              className={`${styles.popoverItem} ${!currentFontSize ? styles.active : ''}`}
               onClick={() => {
-                editor.chain().focus().unsetFontSize().run();
-                setShowFontSize(false);
+                setFontSize(editor, null);
+                setOpen(null);
               }}
             >
               Default
@@ -129,15 +240,14 @@ export function EditorFormatToolbar({ editor }: EditorFormatToolbarProps) {
               <button
                 key={size}
                 type="button"
-                className={`${styles.popoverItem} ${
-                  currentFontSize === size ? styles.active : ''
-                }`}
+                role="menuitem"
+                className={`${styles.popoverItem} ${currentFontSize === size ? styles.active : ''}`}
                 onClick={() => {
-                  editor.chain().focus().setFontSize(size).run();
-                  setShowFontSize(false);
+                  setFontSize(editor, size);
+                  setOpen(null);
                 }}
               >
-                {size}
+                {parseInt(size, 10)}
               </button>
             ))}
           </div>
@@ -146,70 +256,118 @@ export function EditorFormatToolbar({ editor }: EditorFormatToolbarProps) {
 
       <span className={styles.sep} />
 
-      {/* Basic formatting */}
-      {btn('B', () => editor.chain().focus().toggleBold().run(), editor.isActive('bold'), 'Bold (Ctrl+B)', { fontWeight: 700 })}
-      {btn('I', () => editor.chain().focus().toggleItalic().run(), editor.isActive('italic'), 'Italic (Ctrl+I)', { fontStyle: 'italic' })}
-      {btn('U', () => editor.chain().focus().toggleUnderline().run(), editor.isActive('underline'), 'Underline (Ctrl+U)', { textDecoration: 'underline' })}
-      {btn('S', () => editor.chain().focus().toggleStrike().run(), editor.isActive('strike'), 'Strikethrough', { textDecoration: 'line-through' })}
+      {btn('B', () => toggleBold(editor), formats.bold, 'Bold', 'Ctrl+B', { fontWeight: 700 })}
+      {btn('I', () => toggleItalic(editor), formats.italic, 'Italic', 'Ctrl+I', { fontStyle: 'italic', fontFamily: 'Georgia, serif' })}
+      {btn('U', () => toggleUnderline(editor), formats.underline, 'Underline', 'Ctrl+U', { textDecoration: 'underline' })}
+      {btn('S', () => toggleStrike(editor), formats.strike, 'Strikethrough', 'Ctrl+Shift+S', { textDecoration: 'line-through' })}
+      {btn(<CodeIcon />, () => toggleCode(editor), formats.code, 'Inline code', 'Ctrl+E')}
+
+      {/* Link */}
+      <div className={`${styles.popoverWrap} ${styles.linkWrap}`}>
+        <button
+          type="button"
+          className={`${styles.btn} ${hasLink ? styles.active : ''}`}
+          onClick={openLink}
+          aria-label={hasLink ? 'Edit link' : 'Add link'}
+          aria-pressed={hasLink}
+          aria-expanded={open === 'link'}
+          title={hasLink ? 'Edit link' : 'Add link'}
+        >
+          <LinkIcon />
+        </button>
+        {open === 'link' && (
+          <form
+            className={styles.linkPopover}
+            onSubmit={(e) => {
+              e.preventDefault();
+              applyLink();
+            }}
+          >
+            <input
+              type="text"
+              inputMode="url"
+              className={`${styles.linkInput} ${linkError ? styles.invalid : ''}`}
+              value={linkDraft}
+              onChange={(e) => {
+                setLinkDraft(e.target.value);
+                setLinkError(false);
+              }}
+              placeholder="https://example.com"
+              aria-label="Link URL"
+              aria-invalid={linkError}
+              aria-describedby={linkError ? 'inline-link-error' : undefined}
+              autoFocus
+            />
+            <button type="submit" className={styles.linkApply} aria-label="Apply link" title="Apply link">
+              Apply
+            </button>
+            {linkError && (
+              <span id="inline-link-error" className={styles.linkError} role="alert">
+                Use an http(s) or e-mail link
+              </span>
+            )}
+            {hasLink && (
+              <button
+                type="button"
+                className={styles.linkRemove}
+                onClick={() => {
+                  unsetLink(editor);
+                  setOpen(null);
+                }}
+                aria-label="Remove link"
+                title="Remove link"
+              >
+                Remove
+              </button>
+            )}
+          </form>
+        )}
+      </div>
 
       <span className={styles.sep} />
 
-      {/* Sub/Superscript */}
-      {btn(
-        'X\u2082',
-        () => editor.chain().focus().toggleSubscript().run(),
-        editor.isActive('subscript'),
-        'Subscript'
-      )}
-      {btn(
-        'X\u00B2',
-        () => editor.chain().focus().toggleSuperscript().run(),
-        editor.isActive('superscript'),
-        'Superscript'
-      )}
+      {btn('X₂', () => toggleSubscript(editor), formats.subscript, 'Subscript')}
+      {btn('X²', () => toggleSuperscript(editor), formats.superscript, 'Superscript')}
 
       <span className={styles.sep} />
 
-      {/* Text Color */}
+      {/* Text color */}
       <div className={styles.popoverWrap}>
         <button
           type="button"
           className={styles.btn}
-          onClick={() => {
-            setShowColorPicker(!showColorPicker);
-            setShowHighlightPicker(false);
-            setShowFontSize(false);
-          }}
+          onClick={() => toggle('color')}
+          aria-label="Text color"
+          aria-expanded={open === 'color'}
           title="Text color"
-          style={{
-            borderBottom: `3px solid ${
-              (editor.getAttributes('textStyle').color as string) || 'currentColor'
-            }`,
-          }}
         >
-          A
+          <span className={styles.colorGlyph} style={{ borderBottomColor: currentColor || 'currentColor' }}>
+            A
+          </span>
         </button>
-        {showColorPicker && (
-          <div className={styles.colorGrid}>
+        {open === 'color' && (
+          <div className={styles.colorGrid} role="group" aria-label="Text color">
             <button
               type="button"
               className={styles.colorSwatch}
               onClick={() => {
-                editor.chain().focus().unsetColor().run();
-                setShowColorPicker(false);
+                setTextColor(editor, null);
+                setOpen(null);
               }}
-              title="Default"
-              style={{ background: 'linear-gradient(135deg, #fff 45%, #f00 50%, #fff 55%)' }}
+              aria-label="Default color"
+              title="Default color"
+              style={{ background: NONE_SWATCH }}
             />
             {COLORS.map((color) => (
               <button
                 key={color}
                 type="button"
-                className={styles.colorSwatch}
+                className={`${styles.colorSwatch} ${currentColor === color ? styles.swatchActive : ''}`}
                 onClick={() => {
-                  editor.chain().focus().setColor(color).run();
-                  setShowColorPicker(false);
+                  setTextColor(editor, color);
+                  setOpen(null);
                 }}
+                aria-label={`Color ${color}`}
                 title={color}
                 style={{ backgroundColor: color }}
               />
@@ -222,45 +380,39 @@ export function EditorFormatToolbar({ editor }: EditorFormatToolbarProps) {
       <div className={styles.popoverWrap}>
         <button
           type="button"
-          className={`${styles.btn} ${editor.isActive('highlight') ? styles.active : ''}`}
-          onClick={() => {
-            setShowHighlightPicker(!showHighlightPicker);
-            setShowColorPicker(false);
-            setShowFontSize(false);
-          }}
+          className={`${styles.btn} ${formats.highlight ? styles.active : ''}`}
+          onClick={() => toggle('highlight')}
+          aria-label="Highlight"
+          aria-expanded={open === 'highlight'}
           title="Highlight"
         >
-          <span
-            style={{
-              background: (editor.getAttributes('highlight').color as string) || 'rgba(241, 196, 15, 0.6)',
-              padding: '0 3px',
-              borderRadius: 2,
-            }}
-          >
+          <span className={styles.highlightGlyph} style={{ background: currentHighlight || 'rgba(241, 196, 15, 0.6)' }}>
             H
           </span>
         </button>
-        {showHighlightPicker && (
-          <div className={styles.colorGrid}>
+        {open === 'highlight' && (
+          <div className={styles.colorGrid} role="group" aria-label="Highlight color">
             <button
               type="button"
               className={styles.colorSwatch}
               onClick={() => {
-                editor.chain().focus().unsetHighlight().run();
-                setShowHighlightPicker(false);
+                setHighlight(editor, null);
+                setOpen(null);
               }}
+              aria-label="No highlight"
               title="No highlight"
-              style={{ background: 'linear-gradient(135deg, #fff 45%, #f00 50%, #fff 55%)' }}
+              style={{ background: NONE_SWATCH }}
             />
             {HIGHLIGHT_COLORS.map((color) => (
               <button
                 key={color}
                 type="button"
-                className={styles.colorSwatch}
+                className={`${styles.colorSwatch} ${currentHighlight === color ? styles.swatchActive : ''}`}
                 onClick={() => {
-                  editor.chain().focus().setHighlight({ color }).run();
-                  setShowHighlightPicker(false);
+                  setHighlight(editor, color);
+                  setOpen(null);
                 }}
+                aria-label={`Highlight ${color}`}
                 title={color}
                 style={{ backgroundColor: color }}
               />
@@ -269,23 +421,11 @@ export function EditorFormatToolbar({ editor }: EditorFormatToolbarProps) {
         )}
       </div>
 
-      <span className={styles.sep} />
-
-      {/* Alignment */}
-      {btn('\u2261', () => setAlign('left'), isAlignActive('left'), 'Align left (Ctrl+Shift+L)')}
-      {btn('\u2261', () => setAlign('center'), isAlignActive('center'), 'Align center (Ctrl+Shift+E)', { textAlign: 'center' })}
-      {btn('\u2261', () => setAlign('right'), isAlignActive('right'), 'Align right (Ctrl+Shift+R)', { textAlign: 'right' })}
-      {btn('\u2263', () => setAlign('justify'), isAlignActive('justify'), 'Justify (Ctrl+Shift+J)')}
+      {extras}
 
       <span className={styles.sep} />
 
-      {/* Clear formatting */}
-      {btn(
-        'T\u0338',
-        () => editor.chain().focus().unsetAllMarks().clearNodes().run(),
-        false,
-        'Clear formatting'
-      )}
+      {btn(<ClearFormatIcon />, () => clearFormatting(editor), undefined, 'Clear formatting')}
     </div>
   );
 }

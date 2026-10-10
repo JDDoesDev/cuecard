@@ -11,12 +11,17 @@ import { tiptapToSlide } from '@/lib/editor/tiptapToSlide';
 import {
   getElementTextAlign,
   getTextAlignState,
+  isTextLikeElement,
   textAlignUpdates,
   withElementTextAlign,
   type TextAlignValue,
+  type TextLikeElement,
 } from '@/lib/editor/textAlign';
 import { textContentToLines, linesToTextContent } from '@/lib/editor/legacyTextContent';
-import { TiptapEditor } from './TiptapEditor';
+import { lineHeightUpdates } from '@/lib/editor/editorCommands';
+import type { Editor } from '@tiptap/react';
+import { InlineTextEditor, type InlineEditEntry, type InlineTextEditorHandle } from './InlineTextEditor';
+import { TextElementToolbar, type TextTypeValue } from './TextElementToolbar';
 import { SelectableElement } from './SelectableElement';
 import { SelectionRectangle } from './SelectionRectangle';
 import { AlignmentGuides } from './AlignmentGuides';
@@ -46,6 +51,64 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 /** Fresh slide from the store (avoids stale closures in long-lived handlers). */
 function getFreshSlide(slideIndex: number) {
   return presentationStore.getState().presentation?.slides[slideIndex];
+}
+
+/** Index of the slide holding `elementId` (element ids are unique across the deck). */
+function findSlideIndexOfElement(elementId: string): number {
+  const slides = presentationStore.getState().presentation?.slides ?? [];
+  return slides.findIndex((s) => s.elements.some((el) => el.id === elementId));
+}
+
+/**
+ * Convert a heading/text/list element to another text type, keeping its text
+ * and shared properties (position, fragment, font, line height, alignment).
+ */
+function convertTextElement(oldEl: TextLikeElement, newType: TextTypeValue, ordered?: boolean): SlideElement | null {
+  // Extract paragraphs (inline HTML) from the old element
+  const lines =
+    oldEl.type === 'list'
+      ? oldEl.items
+      : oldEl.type === 'text'
+        ? textContentToLines(oldEl.content)
+        : [oldEl.content];
+
+  // Properties shared by heading/text/list survive a type change
+  const common = {
+    id: oldEl.id,
+    position: oldEl.position,
+    ...(oldEl.fragment !== undefined && { fragment: oldEl.fragment }),
+    ...(oldEl.lineHeight !== undefined && { lineHeight: oldEl.lineHeight }),
+    ...(oldEl.fontFamily !== undefined && { fontFamily: oldEl.fontFamily }),
+    ...(oldEl.verticalAlign !== undefined && { verticalAlign: oldEl.verticalAlign }),
+  };
+
+  let newElement: SlideElement;
+  if (newType === 'text') {
+    // Text content is rich HTML: one <p> per paragraph (a bare "\n" would be
+    // a markdown soft break and merge the lines)
+    newElement = {
+      ...common,
+      type: 'text',
+      content: oldEl.type === 'text' ? oldEl.content : linesToTextContent(lines),
+    };
+  } else if (newType.startsWith('heading-')) {
+    const level = parseInt(newType.split('-')[1], 10) as 1 | 2 | 3 | 4 | 5 | 6;
+    const content = oldEl.type === 'heading' ? oldEl.content : lines.filter(Boolean).join(' ');
+    newElement = { ...common, type: 'heading', content, level };
+  } else if (newType === 'list') {
+    const items = lines.map((s) => s.trim()).filter(Boolean);
+    newElement = {
+      ...common,
+      type: 'list',
+      items: items.length > 0 ? items : [''],
+      ordered: ordered ?? (oldEl.type === 'list' ? oldEl.ordered : false),
+      ...(oldEl.type === 'list' && oldEl.start !== undefined && { start: oldEl.start }),
+      ...(oldEl.type === 'list' && oldEl.fragmentPerItem && { fragmentPerItem: true }),
+    };
+  } else {
+    return null;
+  }
+  return withElementTextAlign(newElement, getElementTextAlign(oldEl));
 }
 
 /**
@@ -89,13 +152,19 @@ export interface SlideEditorProps {
  *
  * Renders all elements as positioned blocks. Click an element to select it.
  * Supports multi-select, drag, resize, and keyboard shortcuts.
- * Double-click enters inline edit mode with TiptapEditor for text elements.
+ * Double-click (or Enter) edits heading/text/list elements in place on the
+ * canvas (InlineTextEditor); other element types open an edit panel.
  */
 export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }: SlideEditorProps) {
   const store = usePresentationStore();
   const { theme } = useTheme();
   const selection = useElementSelection(slideIndex);
   const [editingElementId, setEditingElementId] = useState<string | null>(null);
+  // In-place text editing: where the caret starts, the live Tiptap instance
+  // (for the contextual toolbar) and a handle to flush pending updates
+  const [editingEntry, setEditingEntry] = useState<InlineEditEntry>('end');
+  const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
+  const inlineEditorRef = useRef<InlineTextEditorHandle>(null);
   const [activeGuides, setActiveGuides] = useState<SnapLine[]>([]);
   const [showGrid, setShowGrid] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; elementId: string } | null>(null);
@@ -121,6 +190,20 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
     return slide.elements.findIndex((el) => el.id === editingElementId);
   }, [slide, editingElementId]);
 
+  const editingElement =
+    slide && editingElementId ? slide.elements.find((el) => el.id === editingElementId) : undefined;
+  /** Heading/text/list elements are edited in place on the canvas. */
+  const isInlineEditing = !!editingElement && isTextLikeElement(editingElement);
+
+  // Leave edit mode when the slide changes or the element disappears (undo,
+  // deletion, another tab). An in-place editor flushes on unmount.
+  useEffect(() => {
+    setEditingElementId(null);
+  }, [slideIndex]);
+  useEffect(() => {
+    if (editingElementId && slide && !editingElement) setEditingElementId(null);
+  }, [editingElementId, slide, editingElement]);
+
   // Generate HTML content for the editing element
   const tiptapContent = useMemo<string>(() => {
     if (!slide || editingElementIndex === null) {
@@ -130,24 +213,130 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
     return slideToTiptap(slide, editingElementIndex);
   }, [slide, slideIndex, editingElementIndex]);
 
-  // Handle editor updates for the editing element. Reads the slide fresh from
-  // the store (this can run from an unmount flush) and locates the element by id.
-  const handleEditorUpdate = useCallback(
-    (html: string) => {
-      if (!editingElementId) return;
-      const freshSlide = getFreshSlide(slideIndex);
-      if (!freshSlide) return;
-      const idx = freshSlide.elements.findIndex((el) => el.id === editingElementId);
-      if (idx === -1) return;
+  // Handle in-place editor updates. Reads the deck fresh from the store and
+  // locates the element by id: this also runs from an unmount flush, e.g.
+  // after the user already switched to another slide.
+  const handleEditorUpdate = useCallback((elementId: string, html: string) => {
+    const targetSlideIndex = findSlideIndexOfElement(elementId);
+    const freshSlide = getFreshSlide(targetSlideIndex);
+    if (!freshSlide) return;
+    const idx = freshSlide.elements.findIndex((el) => el.id === elementId);
 
-      const updatedSlide = tiptapToSlide(html, freshSlide, idx);
-      const updatedJson = JSON.stringify(updatedSlide);
-      if (updatedJson === JSON.stringify(freshSlide)) return;
-      lastSentSlideJsonRef.current = updatedJson;
-      // Typing bursts become a single undo step
-      coalesceHistory(`rich:${editingElementId}`, () => store.updateSlide(slideIndex, updatedSlide), 2000);
+    const updatedSlide = tiptapToSlide(html, freshSlide, idx);
+    const updatedJson = JSON.stringify(updatedSlide);
+    if (updatedJson === JSON.stringify(freshSlide)) return;
+    lastSentSlideJsonRef.current = updatedJson;
+    // Typing bursts become a single undo step
+    coalesceHistory(
+      `rich:${elementId}`,
+      () => presentationStore.getState().updateSlide(targetSlideIndex, updatedSlide),
+      2000
+    );
+  }, []);
+
+  /** Push the in-place editor's pending (debounced) text to the store now. */
+  const flushEditing = useCallback(() => {
+    inlineEditorRef.current?.flush();
+  }, []);
+
+  const startEditing = useCallback(
+    (id: string, entry: InlineEditEntry = 'end') => {
+      selection.select(id, false);
+      setEditingEntry(entry);
+      setEditingElementId(id);
     },
-    [slideIndex, store, editingElementId]
+    [selection]
+  );
+
+  /** Leave edit mode: commit pending text, keep the element selected, focus the canvas. */
+  const exitEditing = useCallback(() => {
+    flushEditing();
+    const id = editingElementId;
+    setEditingElementId(null);
+    if (id && getFreshSlide(slideIndex)?.elements.some((el) => el.id === id)) {
+      selection.select(id, false);
+    }
+    canvasRef.current?.focus({ preventScroll: true });
+  }, [flushEditing, editingElementId, slideIndex, selection]);
+
+  // In-place editing ends on a press outside the element and its toolbars
+  // (canvas, another element, slide panel, …). Runs in the capture phase so
+  // the text is committed before that press starts a drag or a selection.
+  useEffect(() => {
+    if (!isInlineEditing || !editingElementId) return;
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as Element | null;
+      if (!target || !(target instanceof Element)) return;
+      if (target.closest(`[data-element-id="${CSS.escape(editingElementId)}"]`)) return;
+      if (target.closest('[data-inline-editor-ui]')) return;
+      exitEditing();
+    };
+    // Keyboard users: focus moving elsewhere (Tab to another control) also
+    // ends editing. Focus going to the toolbars/popovers or back to the
+    // document (window switch) keeps it.
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target;
+      if (!(target instanceof Element) || target === document.body) return;
+      if (target.closest(`[data-element-id="${CSS.escape(editingElementId)}"]`)) return;
+      if (target.closest('[data-inline-editor-ui]')) return;
+      exitEditing();
+    };
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('focusin', handleFocusIn);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('focusin', handleFocusIn);
+    };
+  }, [isInlineEditing, editingElementId, exitEditing]);
+
+  /** Change the edited element's type (Text / Heading N / List) as one undo step. */
+  const changeTextType = useCallback(
+    (elementId: string, newType: TextTypeValue, ordered?: boolean) => {
+      flushEditing();
+      const freshSlide = getFreshSlide(slideIndex);
+      const oldEl = freshSlide?.elements.find((el) => el.id === elementId);
+      if (!freshSlide || !oldEl || !isTextLikeElement(oldEl)) return;
+      const newElement = convertTextElement(oldEl, newType, ordered);
+      if (!newElement) return;
+      // The in-place editor is re-created for the new type: caret at the end
+      if (newElement.type !== oldEl.type) setEditingEntry('end');
+      store.updateSlide(slideIndex, {
+        ...freshSlide,
+        elements: freshSlide.elements.map((el) => (el.id === elementId ? newElement : el)),
+      });
+    },
+    [flushEditing, slideIndex, store]
+  );
+
+  /**
+   * Bulleted/numbered buttons work on the whole element: switch the list
+   * style, turn a text/heading into a list, or (active style again) a list
+   * back into text.
+   */
+  const setListStyle = useCallback(
+    (elementId: string, style: 'bullet' | 'ordered') => {
+      flushEditing();
+      const el = getFreshSlide(slideIndex)?.elements.find((e) => e.id === elementId);
+      if (!el || !isTextLikeElement(el)) return;
+      const ordered = style === 'ordered';
+      if (el.type !== 'list') {
+        changeTextType(elementId, 'list', ordered);
+      } else if (!!el.ordered === ordered) {
+        changeTextType(elementId, 'text');
+      } else {
+        store.updateElement(slideIndex, elementId, { ordered, start: undefined } as Partial<SlideElement>);
+      }
+    },
+    [flushEditing, changeTextType, slideIndex, store]
+  );
+
+  const handleElementAdded = useCallback(
+    (element: SlideElement) => {
+      // New text starts in edit mode with its placeholder text selected, so typing replaces it
+      if (isTextLikeElement(element)) startEditing(element.id, 'all');
+      else selection.select(element.id, false);
+    },
+    [startEditing, selection]
   );
 
   /** Update an element from a typing-style input (coalesced into one undo step per burst). */
@@ -383,8 +572,15 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't fire shortcuts when in edit mode or in a native input
-      if (editingElementId !== null) return;
+      // While editing, the editor/panel owns the keyboard; Escape leaves
+      // in-place text editing (and keeps the element selected)
+      if (editingElementId !== null) {
+        if (e.key === 'Escape' && isInlineEditing) {
+          e.preventDefault();
+          exitEditing();
+        }
+        return;
+      }
 
       const target = e.target as HTMLElement;
       const isNativeInput =
@@ -398,6 +594,17 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
       const mod = e.metaKey || e.ctrlKey;
       const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
       const hasSelection = selection.selectedIds.size > 0;
+
+      // Enter: edit the selected text element in place
+      if (key === 'Enter' && !mod && selection.selectedIds.size === 1) {
+        const onCanvas = target === document.body || canvasRef.current?.contains(target);
+        const el = getFreshSlide(slideIndex)?.elements.find((x) => selection.selectedIds.has(x.id));
+        if (onCanvas && el && isTextLikeElement(el)) {
+          e.preventDefault();
+          startEditing(el.id, 'end');
+          return;
+        }
+      }
 
       // Delete/Backspace: delete selected elements
       if ((key === 'Delete' || key === 'Backspace') && hasSelection) {
@@ -497,6 +704,9 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
   }, [
     slideIndex,
     editingElementId,
+    isInlineEditing,
+    exitEditing,
+    startEditing,
     selection,
     store,
     copyElements,
@@ -514,14 +724,8 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
     );
   }
 
-  // If in editing mode, show inline editor for the element
-  if (editingElementId !== null) {
-    const editingElement = slide.elements.find((el) => el.id === editingElementId);
-    if (!editingElement) {
-      setEditingElementId(null);
-      return null;
-    }
-
+  // Non-text elements are edited in a panel that replaces the canvas
+  if (editingElement && !isInlineEditing) {
     // Code elements use a textarea + language selector
     if (editingElement.type === 'code') {
       return (
@@ -821,112 +1025,34 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
       );
     }
 
-    // Text-based elements (heading, text, list) use TiptapEditor
-    const textType = editingElement.type === 'heading'
-      ? `heading-${editingElement.level}`
-      : editingElement.type;
-
-    const handleTypeChange = (newType: string) => {
-      if (!slide) return;
-      const oldEl = editingElement;
-      let newElement: SlideElement;
-
-      // Extract paragraphs (inline HTML) from the old element
-      const lines =
-        oldEl.type === 'list'
-          ? oldEl.items
-          : oldEl.type === 'text'
-            ? textContentToLines(oldEl.content)
-            : [oldEl.content];
-
-      // Properties shared by heading/text/list survive a type change
-      const common = {
-        id: oldEl.id,
-        position: oldEl.position,
-        ...(oldEl.fragment !== undefined && { fragment: oldEl.fragment }),
-        ...(oldEl.lineHeight !== undefined && { lineHeight: oldEl.lineHeight }),
-        ...(oldEl.fontFamily !== undefined && { fontFamily: oldEl.fontFamily }),
-        ...(oldEl.verticalAlign !== undefined && { verticalAlign: oldEl.verticalAlign }),
-      };
-
-      if (newType === 'text') {
-        // Text content is rich HTML: one <p> per paragraph (a bare "\n" would be
-        // a markdown soft break and merge the lines)
-        newElement = {
-          ...common,
-          type: 'text',
-          content: oldEl.type === 'text' ? oldEl.content : linesToTextContent(lines),
-        };
-      } else if (newType.startsWith('heading-')) {
-        const level = parseInt(newType.split('-')[1], 10) as 1 | 2 | 3 | 4 | 5 | 6;
-        const content = oldEl.type === 'heading' ? oldEl.content : lines.filter(Boolean).join(' ');
-        newElement = { ...common, type: 'heading', content, level };
-      } else if (newType === 'list') {
-        const items = lines.map((s) => s.trim()).filter(Boolean);
-        newElement = {
-          ...common,
-          type: 'list',
-          items: items.length > 0 ? items : [''],
-          ordered: oldEl.type === 'list' ? oldEl.ordered : false,
-          ...(oldEl.type === 'list' && oldEl.start !== undefined && { start: oldEl.start }),
-          ...(oldEl.type === 'list' && oldEl.fragmentPerItem && { fragmentPerItem: true }),
-        };
-      } else {
-        return;
-      }
-      newElement = withElementTextAlign(newElement, getElementTextAlign(oldEl));
-
-      // Replace element in slide
-      const updatedElements = slide.elements.map((el) =>
-        el.id === oldEl.id ? newElement : el
-      );
-      store.updateSlide(slideIndex, { ...slide, elements: updatedElements });
-    };
-
-    return (
-      <div className={`${styles.editorContainer} ${className}`}>
-        <div className={styles.editorHeader}>
-          <button
-            className={styles.backButton}
-            onClick={() => setEditingElementId(null)}
-          >
-            Back to canvas
-          </button>
-          <select
-            className={styles.typeSelect}
-            value={textType}
-            onChange={(e) => handleTypeChange(e.target.value)}
-          >
-            <option value="text">Text</option>
-            <option value="heading-1">Heading 1</option>
-            <option value="heading-2">Heading 2</option>
-            <option value="heading-3">Heading 3</option>
-            <option value="heading-4">Heading 4</option>
-            <option value="heading-5">Heading 5</option>
-            <option value="heading-6">Heading 6</option>
-            <option value="list">List</option>
-          </select>
-        </div>
-        <TiptapEditor
-          content={tiptapContent}
-          onUpdate={handleEditorUpdate}
-          skipContentSync={skipContentSync}
-          placeholder="Start typing..."
-          className={styles.editor}
-        />
-      </div>
-    );
+    return null;
   }
 
   // Canvas mode - show all elements with selection system
   return (
     <div className={`${styles.editorContainer} ${className}`}>
-      {/* Add Element Toolbar */}
-      <AddElementToolbar
-        slideIndex={slideIndex}
-        showGrid={showGrid}
-        onGridToggle={() => setShowGrid(!showGrid)}
-      />
+      {/* Top bar: add-element tools, or the text element's tools while it is
+          edited in place (same slot and height, so the canvas never moves) */}
+      {isInlineEditing && editingElement && isTextLikeElement(editingElement) ? (
+        <TextElementToolbar
+          editor={activeEditor}
+          element={editingElement}
+          onTypeChange={(type) => changeTextType(editingElement.id, type)}
+          onListStyle={(style) => setListStyle(editingElement.id, style)}
+          onElementLineHeight={(value) => {
+            flushEditing();
+            store.updateElement(slideIndex, editingElement.id, lineHeightUpdates(editingElement, value));
+          }}
+          onDone={exitEditing}
+        />
+      ) : (
+        <AddElementToolbar
+          slideIndex={slideIndex}
+          showGrid={showGrid}
+          onGridToggle={() => setShowGrid(!showGrid)}
+          onElementAdded={handleElementAdded}
+        />
+      )}
 
       {/* Slide Canvas */}
       <div className={styles.slideCanvasWrapper}>
@@ -954,12 +1080,15 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
               key={element.id}
               element={element}
               isSelected={selection.isSelected(element.id)}
+              isEditing={isInlineEditing && element.id === editingElementId}
               zIndex={idx}
               onSelect={(id, shiftKey) => {
                 selection.select(id, shiftKey);
               }}
-              onDoubleClick={(id) => {
-                setEditingElementId(id);
+              onDoubleClick={(id, point) => {
+                // Text: caret where the user double-clicked; others open their panel
+                if (isTextLikeElement(element)) startEditing(id, point);
+                else setEditingElementId(id);
               }}
               onContextMenu={handleContextMenu}
               onPositionChange={handlePositionChange}
@@ -972,7 +1101,20 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
                 endHistoryBatch();
               }}
             >
-              <ElementRenderer element={element} />
+              {isInlineEditing && element.id === editingElementId && isTextLikeElement(element) ? (
+                <InlineTextEditor
+                  key={element.type}
+                  ref={inlineEditorRef}
+                  element={element}
+                  content={tiptapContent}
+                  skipContentSync={skipContentSync}
+                  onUpdate={handleEditorUpdate}
+                  entry={editingEntry}
+                  onEditorChange={setActiveEditor}
+                />
+              ) : (
+                <ElementRenderer element={element} />
+              )}
             </SelectableElement>
           ))}
           <SelectionRectangle
@@ -985,7 +1127,9 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
         </div>
       </div>
 
-      {/* Controls Bar — slide-level + contextual element controls */}
+      {/* Controls Bar — slide-level + contextual element controls. Using it
+          while text is edited in place ends editing (outside press/focus),
+          which commits the text first; the element stays selected. */}
       <div className={styles.fragmentControls}>
         <label className={styles.fragmentLabel}>Transition:</label>
         <select

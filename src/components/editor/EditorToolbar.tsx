@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { usePresentationUndo } from '@/hooks/usePresentationUndo';
 import { usePresentationStore } from '@/hooks/usePresentationStore';
+import { presentationStore } from '@/store/presentationStore';
 import { useTheme } from '@/components/ThemeProvider/ThemeProvider';
 import { openDualScreen } from '@/hooks/usePresentationMode';
 import { ThemeOptions } from '@/components/theme/ThemeOptions';
@@ -60,10 +61,15 @@ export function EditorToolbar({
 
       const key = e.key.toLowerCase();
 
+      // History is read fresh: the in-place text editor flushes its pending
+      // typing into the store on this same keydown (before it reaches here),
+      // so the canUndo/canRedo captured at render time may be stale.
+      const history = presentationStore.temporal.getState();
+
       // Ctrl+Z or Cmd+Z for undo
       if ((e.ctrlKey || e.metaKey) && key === 'z' && !e.shiftKey) {
         e.preventDefault();
-        if (canUndo) undo();
+        if (history.pastStates.length > 0) undo();
       }
 
       // Ctrl+Shift+Z or Cmd+Shift+Z or Ctrl+Y for redo
@@ -72,7 +78,7 @@ export function EditorToolbar({
         ((e.ctrlKey || e.metaKey) && key === 'y')
       ) {
         e.preventDefault();
-        if (canRedo) redo();
+        if (history.futureStates.length > 0) redo();
       }
     };
 
@@ -80,7 +86,7 @@ export function EditorToolbar({
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [undo, redo, canUndo, canRedo]);
+  }, [undo, redo]);
 
   const handleSaveToFile = useCallback(async (forceNew = false) => {
     if (!store.presentation) return;

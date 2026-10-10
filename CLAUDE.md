@@ -8,6 +8,7 @@ pnpm build        # Production build
 pnpm test         # Run tests (vitest run)
 pnpm test:watch   # Run tests in watch mode
 pnpm typecheck    # TypeScript check (tsc --noEmit)
+pnpm test:e2e     # Playwright browser tests (starts the dev server)
 ```
 
 Package manager: **pnpm** (v10.28.0). Do not use npm or yarn.
@@ -16,7 +17,7 @@ Package manager: **pnpm** (v10.28.0). Do not use npm or yarn.
 
 Cuecard — presentation editor app: React 19 + Zustand + Vite + TypeScript. Three modes:
 
-- **Edit mode** — WYSIWYG slide editor with Tiptap rich text, drag-and-drop reordering (dnd-kit), element positioning, speaker notes
+- **Edit mode** — WYSIWYG slide editor: text/heading/list elements are edited in place on the canvas (Tiptap, floating bubble toolbar + element toolbar), drag-and-drop reordering (dnd-kit), element positioning, speaker notes
 - **Presenter mode** — fullscreen presentation with speaker notes, timer, next-slide preview; keyboard/click navigation
 - **Audience mode** — synced read-only view receiving navigation state via BroadcastChannel + localStorage fallback
 
@@ -30,7 +31,7 @@ Cuecard — presentation editor app: React 19 + Zustand + Vite + TypeScript. Thr
 
 All slide layouts use `SlideElement[]` with percentage-based positioning (`x`, `y`, `w`, `h` as 0-100). Element types: `heading`, `text`, `list`, `code`, `image`, `video`, `rectangle`, `circle`, `line`, `html`. Layout types (`title`, `title-list`, `two-column`, `code-block`, `full-bleed-media`, `media-anywhere`, `freestyle`) are inferred from content but all render through `UniversalSlide` → `ElementRenderer`.
 
-The `html` element type embeds arbitrary HTML/CSS as a first-class slide element. It stores raw HTML in `htmlContent`, renders via `dangerouslySetInnerHTML`, inherits slide theme styles (font, color), and serializes as a raw mdast `html` node for markdown round-trip. The editor provides a live preview above a syntax-highlighted code editor (SyntaxHighlighter overlay on textarea).
+The `html` element type embeds arbitrary HTML/CSS as a first-class slide element. It stores raw HTML in `htmlContent`, renders in a sandboxed iframe (`HtmlFrame.tsx`, no scripts) that receives the slide theme styles (font, color) and inlined fonts, and serializes as a raw mdast `html` node for markdown round-trip. The editor provides a live preview above a syntax-highlighted code editor (SyntaxHighlighter overlay on textarea).
 
 **Important**: `inferLayout.ts` converts mdast AST nodes to elements. The node-to-element mapping is NOT 1:1 — layouts reorder, combine, and filter nodes. Custom properties on mdast nodes (e.g., `_fragment`, `_fragmentPerItem`) pass metadata through this pipeline.
 
@@ -49,7 +50,7 @@ Elements have optional `fragment?: number` for incremental reveal during present
 
 ### Theming
 
-CSS custom properties defined in `src/styles/themes/`. Six built-in themes. Variables scoped via `[data-theme]` attribute on `<html>`. Presentation-level fonts (`fontHeading`/`fontBody`) are scoped to slide containers via inline `--font-heading`/`--font-body` CSS vars — they don't leak to editor UI.
+CSS custom properties defined in `src/styles/themes/`. 18 built-in themes plus custom themes (`custom-<slug>`, injected `<style>`). Variables scoped via `[data-theme]` attribute on `<html>`. Presentation-level fonts (`fontHeading`/`fontBody`) are scoped to slide containers via inline `--font-heading`/`--font-body` CSS vars — they don't leak to editor UI.
 
 ### Slide Content Scaling
 
@@ -78,12 +79,14 @@ Slide containers (both `<Slide>` component and editor canvas `.slideCanvas`) use
 | Serializer | `src/lib/serializer/slideToMarkdown.ts` |
 | Slide rendering | `src/components/layouts/UniversalSlide.tsx`, `src/components/layouts/ElementRenderer.tsx` |
 | Navigation | `src/hooks/useFragmentNav.ts`, `src/hooks/useKeyboardNav.ts` |
-| Editor | `src/components/editor/` (EditorLayout, SlidePanel, SlideEditor, EditorToolbar, etc.) |
+| Editor | `src/components/editor/` (EditorLayout, SlidePanel, SlideEditor, InlineTextEditor, TextElementToolbar, EditorFormatToolbar bubble, EditorToolbar) |
+| Rich text engine | `src/lib/editor/` (tiptapSchema, slideToTiptap/tiptapToSlide, editorCommands, pasteCleanup) |
+| Security | `src/lib/security/` (sanitize, inlineStyle allowlist) — all user HTML goes through these |
 | Themes | `src/styles/themes/` (default.css, dark.css, etc.) |
 
 ## Testing
 
-Tests live alongside source in `__tests__/` directories. Vitest with jsdom environment. ~530 tests across parser, serializer (incl. lossless round-trip), store, editor, export, media, hooks, and themes.
+Tests live alongside source in `__tests__/` directories. Vitest with jsdom environment. ~685 unit tests across parser, serializer (incl. lossless round-trip), store, editor, export, media, hooks, and themes. Playwright browser tests in `e2e/` (`pnpm test:e2e`, ~40 tests).
 
 Zustand persist warnings in test output are expected (no localStorage in test env).
 

@@ -6,10 +6,20 @@
   outline: 1px dashed rgba(59, 130, 246, 0.5);
 }
 
+/*
+ * Selection is drawn with outline + shadow (not a border) so selecting or
+ * editing an element never shrinks its content box and reflows its text.
+ */
 .elementContainer.selected {
-  /* Blue border with white outline for contrast */
-  outline: 1px solid white;
-  border: 2px solid #3b82f6;
+  outline: 2px solid #3b82f6;
+  outline-offset: 0;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9);
+}
+
+.elementContainer.editing {
+  cursor: text;
+  outline-style: solid;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.9), 0 0 0 6px rgba(59, 130, 246, 0.25);
 }
 
 .elementContainer.dragging,
@@ -24,4 +34,20 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
+}
+
+/* Text elements: min-height box that grows with its content (like present mode) */
+.textContainer {
+  display: flex;
+  flex-direction: column;
+}
+
+.textContainer > .content {
+  flex: 1 0 auto;
+  height: auto;
+  overflow: visible;
+}
+
+.editing > .content {
+  pointer-events: auto;
 }

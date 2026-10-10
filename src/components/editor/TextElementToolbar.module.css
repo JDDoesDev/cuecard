@@ -1,0 +1,137 @@
+/* ============================================================================
+   TextElementToolbar — element-level controls while editing text in place.
+   Box/height come from AddElementToolbar's .toolbar (same slot, no jump).
+   ============================================================================ */
+
+.toolbar {
+  height: 42px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.toolbar > * {
+  flex-shrink: 0;
+}
+
+.typeSelect {
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: border-color var(--transition-fast, 120ms);
+}
+
+.typeSelect:hover,
+.typeSelect:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast, 120ms), color var(--transition-fast, 120ms);
+}
+
+.iconButton:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.iconButton[data-active] {
+  background: var(--accent-light);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.iconButton:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.doneButton {
+  margin-left: auto;
+  height: 28px;
+  padding: 0 14px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: background var(--transition-fast, 120ms);
+}
+
+.doneButton:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.lineHeightSelect {
+  width: 84px;
+  margin-left: 2px;
+}
+
+/* Table size picker (fixed: the bar itself scrolls horizontally) */
+.tablePicker {
+  position: fixed;
+  z-index: 1000;
+  padding: 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 6px);
+  box-shadow: var(--shadow-lg);
+}
+
+.tableGrid {
+  display: grid;
+  gap: 3px;
+}
+
+.tableCell {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: var(--bg-secondary);
+  cursor: pointer;
+}
+
+.tableCell[data-on] {
+  background: var(--accent-light);
+  border-color: var(--accent);
+}
+
+.tableCell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.tablePickerLabel {
+  margin-top: 6px;
+  text-align: center;
+  font-size: 12px;
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}

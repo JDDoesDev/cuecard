@@ -147,3 +147,39 @@ export async function exportHtml(page: Page, outDir: string): Promise<string> {
   await expect(dialog).toBeHidden();
   return target;
 }
+
+// ---------------------------------------------------------------------------
+// In-place text editing helpers
+// ---------------------------------------------------------------------------
+
+/** The canvas element currently edited in place (SelectableElement with data-editing). */
+export function editingElement(page: Page): Locator {
+  return editorCanvas(page).locator('[data-editing]');
+}
+
+/** The in-place rich-text surface (Tiptap/ProseMirror root) of the edited element. */
+export function inlineEditor(page: Page): Locator {
+  return editingElement(page).getByRole('textbox', { name: 'Slide text' });
+}
+
+/** Contextual element toolbar shown in the top bar while editing text in place. */
+export function textElementToolbar(page: Page): Locator {
+  return page.getByRole('toolbar', { name: 'Text element' });
+}
+
+/** Floating inline-format toolbar shown over a text selection. */
+export function bubbleToolbar(page: Page): Locator {
+  return page.getByRole('toolbar', { name: 'Text formatting' });
+}
+
+/** Double-click a canvas element to edit its text in place; waits for the editor to take focus. */
+export async function startInlineEdit(page: Page, element: Locator) {
+  await element.dblclick();
+  await expect(inlineEditor(page)).toBeFocused();
+}
+
+/** Leave in-place editing with Escape. */
+export async function exitInlineEdit(page: Page) {
+  await page.keyboard.press('Escape');
+  await expect(editingElement(page)).toHaveCount(0);
+}

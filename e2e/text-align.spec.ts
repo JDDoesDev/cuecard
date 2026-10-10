@@ -1,10 +1,20 @@
 import type { Locator, Page } from '@playwright/test';
-import { test, expect, openEditor, canvasElement, slideElement, waitForAutosave } from './support/app';
+import {
+  test,
+  expect,
+  openEditor,
+  canvasElement,
+  slideElement,
+  waitForAutosave,
+  inlineEditor,
+  textElementToolbar,
+  exitInlineEdit,
+} from './support/app';
 
 /**
  * User-reported bug: centering a text box in the rich-text editor did not
  * stick / did not render centered. Each test starts from a fresh "New text"
- * element centered via the Tiptap toolbar.
+ * element (which opens in in-place edit mode) centered via the element toolbar.
  */
 
 const TEXT = 'New text';
@@ -15,14 +25,12 @@ async function addTextAndCenterIt(page: Page) {
   const box = canvasElement(page, TEXT);
   await expect(box).toBeVisible();
 
-  await box.dblclick();
-  const back = page.getByRole('button', { name: 'Back to canvas' });
-  await expect(back).toBeVisible();
-  // Alignment buttons only have a title (their accessible name is "≡")
-  const center = page.getByTitle('Align center (Ctrl+Shift+E)');
+  // A new text element starts in in-place edit mode
+  await expect(inlineEditor(page)).toBeFocused();
+  const center = textElementToolbar(page).getByRole('button', { name: 'Align center' });
   await center.click();
-  await back.click();
-  await expect(back).toBeHidden();
+  await expect(center).toHaveAttribute('aria-pressed', 'true');
+  await exitInlineEdit(page);
 }
 
 /** The rendered text block (paragraph) of an element. */

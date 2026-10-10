@@ -7,9 +7,11 @@ import styles from './SelectableElement.module.css';
 interface SelectableElementProps {
   element: SlideElement;
   isSelected: boolean;
+  /** Text is being edited in place: pointer events go to the editor, no drag/resize. */
+  isEditing?: boolean;
   zIndex: number;
   onSelect: (id: string, shiftKey: boolean) => void;
-  onDoubleClick?: (id: string) => void;
+  onDoubleClick?: (id: string, point: { x: number; y: number }) => void;
   onContextMenu?: (id: string, x: number, y: number) => void;
   onPositionChange: (elementId: string, newPosition: any, disableSnap: boolean) => void;
   onResizeEnd: (elementId: string, newPosition: any) => void;
@@ -37,6 +39,7 @@ function moveFocusToCanvas(slideContainer: Element) {
 export function SelectableElement({
   element,
   isSelected,
+  isEditing = false,
   zIndex,
   onSelect,
   onDoubleClick,
@@ -63,6 +66,10 @@ export function SelectableElement({
   // Click handler for selection
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
+      if (isEditing) {
+        e.stopPropagation();
+        return;
+      }
       if (didDragRef.current) {
         e.stopPropagation();
         didDragRef.current = false;
@@ -71,26 +78,29 @@ export function SelectableElement({
       e.stopPropagation();
       onSelect(element.id, e.shiftKey);
     },
-    [element.id, onSelect]
+    [element.id, onSelect, isEditing]
   );
 
   // Double-click handler for entering edit mode
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      onDoubleClick?.(element.id);
+      // While editing, double-click selects a word (native behavior)
+      if (!isEditing) onDoubleClick?.(element.id, { x: e.clientX, y: e.clientY });
     },
-    [element.id, onDoubleClick]
+    [element.id, onDoubleClick, isEditing]
   );
 
   // Context menu handler for right-click
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
-      e.preventDefault();
       e.stopPropagation();
+      // While editing, keep the native menu (spelling, copy/paste)
+      if (isEditing) return;
+      e.preventDefault();
       onContextMenu?.(element.id, e.clientX, e.clientY);
     },
-    [element.id, onContextMenu]
+    [element.id, onContextMenu, isEditing]
   );
 
   // Drag start handler
@@ -100,6 +110,17 @@ export function SelectableElement({
       if (e.button !== 0) return;
       const target = e.target as HTMLElement;
       if (target.closest('[data-resize-handle]')) return;
+
+      if (isEditing) {
+        // Don't start a drag or a canvas marquee. A press on the element box
+        // outside the text keeps editing: return focus to the text.
+        e.stopPropagation();
+        if (!target.closest('.ProseMirror')) {
+          e.preventDefault();
+          containerRef.current?.querySelector<HTMLElement>('.ProseMirror')?.focus();
+        }
+        return;
+      }
 
       e.preventDefault();
       e.stopPropagation();
@@ -174,7 +195,7 @@ export function SelectableElement({
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
     },
-    [element, onPositionChange, onDragStart, onDragEnd]
+    [element, onPositionChange, onDragStart, onDragEnd, isEditing]
   );
 
   // Resize start handler
@@ -229,18 +250,28 @@ export function SelectableElement({
     [element, onPositionChange, onResize, onResizeStart, onResizeEnd]
   );
 
+  const isTextType = element.type === 'heading' || element.type === 'text' || element.type === 'list';
+  const verticalAlign = isTextType ? element.verticalAlign : undefined;
+
   return (
     <div
       ref={containerRef}
-      className={`${styles.elementContainer} ${isSelected ? styles.selected : ''} ${
-        isDragging ? styles.dragging : ''
-      } ${isResizing ? styles.resizing : ''}`}
+      className={`${styles.elementContainer} ${isSelected || isEditing ? styles.selected : ''} ${
+        isEditing ? styles.editing : ''
+      } ${isTextType ? styles.textContainer : ''} ${isDragging ? styles.dragging : ''} ${
+        isResizing ? styles.resizing : ''
+      }`}
+      data-element-id={element.id}
+      data-editing={isEditing || undefined}
       style={{
         position: 'absolute',
         left: `${element.position.x}%`,
         top: `${element.position.y}%`,
         width: `${element.position.width}%`,
-        height: `${element.position.height}%`,
+        // Text grows past its box like in UniversalSlide (present mode)
+        ...(isTextType
+          ? { minHeight: `${element.position.height}%` }
+          : { height: `${element.position.height}%` }),
         zIndex,
       }}
       onClick={handleClick}
@@ -251,19 +282,17 @@ export function SelectableElement({
       <div
         className={styles.content}
         style={
-          (element.type === 'heading' || element.type === 'text' || element.type === 'list') &&
-          (element as any).verticalAlign &&
-          (element as any).verticalAlign !== 'top'
+          verticalAlign && verticalAlign !== 'top'
             ? {
                 display: 'flex',
-                alignItems: (element as any).verticalAlign === 'middle' ? 'center' : 'flex-end',
+                alignItems: verticalAlign === 'middle' ? 'center' : 'flex-end',
               }
             : undefined
         }
       >
         {children}
       </div>
-      {isSelected && <ResizeHandles onResizeStart={handleResizeStart} />}
+      {isSelected && !isEditing && <ResizeHandles onResizeStart={handleResizeStart} />}
     </div>
   );
 }

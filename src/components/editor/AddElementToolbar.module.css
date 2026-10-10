@@ -6,6 +6,9 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  /* Fixed height shared with TextElementToolbar, which takes this slot while
+     a text element is edited in place: the canvas must not move. */
+  min-height: 42px;
   padding: 6px 10px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
