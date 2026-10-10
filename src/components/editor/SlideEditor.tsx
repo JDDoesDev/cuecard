@@ -36,7 +36,7 @@ import type { SlideElement, ElementPosition } from '@/types/slide';
 import { getAvailableFonts } from '@/lib/fonts/availableFonts';
 import { useTheme } from '@/components/ThemeProvider/ThemeProvider';
 import { SyntaxHighlighter, CODE_LANGUAGES, codeLanguagePickerValue } from '@/lib/code/languages';
-import { vs2015 } from 'react-syntax-highlighter/dist/esm/styles/hljs';
+import { oneDarkStyle } from '@/lib/code/oneDarkTheme';
 import styles from './SlideEditor.module.css';
 
 // Module-level clipboard — persists across slide navigation, ephemeral (no localStorage)
@@ -791,14 +791,13 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
             <div className={styles.highlightedStack}>
               <SyntaxHighlighter
                 language="html"
-                style={vs2015}
+                style={oneDarkStyle('html')}
                 customStyle={{
                   margin: 0,
                   padding: '16px',
                   background: 'transparent',
                   fontSize: '13px',
                   lineHeight: '1.6',
-                  fontFamily: "var(--font-code, 'JetBrains Mono', monospace)",
                   overflow: 'visible',
                 }}
               >

@@ -156,9 +156,10 @@
   padding: 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md, 6px);
-  background: var(--color-code-bg, #1e1e2e);
-  color: var(--color-code-text, #cdd6f4);
-  font-family: var(--font-code, 'JetBrains Mono', monospace);
+  background: #282c34; /* One Dark — matches slide code blocks (src/lib/code/oneDarkTheme.ts) */
+  color: #abb2bf;
+  caret-color: #528bff;
+  font-family: 'Fira Code iScript', 'Fira Code', Menlo, Monaco, 'Courier New', monospace; /* = CODE_FONT_FAMILY */
   font-size: 13px;
   line-height: 1.6;
   resize: vertical;
@@ -187,7 +188,7 @@
   min-height: 200px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md, 6px);
-  background: var(--color-code-bg, #1e1e2e);
+  background: #282c34;
   overflow: auto;
 }
 
@@ -207,7 +208,7 @@
 .highlightedStack pre,
 .highlightedStack pre code,
 .highlightedStack pre code span {
-  font-family: var(--font-code, 'JetBrains Mono', monospace) !important;
+  font-family: 'Fira Code iScript', 'Fira Code', Menlo, Monaco, 'Courier New', monospace !important; /* = CODE_FONT_FAMILY */
   font-size: 13px !important;
   line-height: 1.6 !important;
   letter-spacing: 0 !important;
@@ -227,8 +228,8 @@
   border: none;
   background: transparent;
   color: transparent;
-  caret-color: #cdd6f4;
-  font-family: var(--font-code, 'JetBrains Mono', monospace);
+  caret-color: #528bff;
+  font-family: 'Fira Code iScript', 'Fira Code', Menlo, Monaco, 'Courier New', monospace; /* = CODE_FONT_FAMILY */
   font-size: 13px;
   line-height: 1.6;
   letter-spacing: 0;
@@ -245,8 +246,8 @@
 }
 
 .highlightedTextarea::selection {
-  background: #264f78;
-  color: #cdd6f4;
+  background: #3e4451;
+  color: #abb2bf;
 }
 
 .captionEditor {

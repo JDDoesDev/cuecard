@@ -23,6 +23,7 @@ import type { Slide, SlideElement } from '@/types/slide';
 import { ElementRenderer } from '@/components/layouts/ElementRenderer';
 import universalStyles from '@/components/layouts/UniversalSlide.module.css';
 import slideStyles from '@/components/Slide/Slide.module.css';
+import { CODE_FONT_FAMILY } from '@/lib/code/oneDarkTheme';
 import { computeTotalFragments } from '@/lib/fragments';
 import { embedImagesForExport } from '@/lib/media/imageRestore';
 import { escapeHtml, sanitizeRenderedHtml } from '@/lib/security/sanitize';
@@ -130,6 +131,7 @@ function collectUsedFamilies(themeCss: string, p: Presentation, slides: Slide[])
   for (const slide of slides) {
     for (const el of slide.elements ?? []) {
       if ('fontFamily' in el) add(el.fontFamily);
+      if (el.type === 'code') add(CODE_FONT_FAMILY);
       if (el.type === 'heading' || el.type === 'text') inline(el.content);
       else if (el.type === 'list') el.items.forEach(inline);
       // html elements render in sandboxed iframes with their own pooled fonts

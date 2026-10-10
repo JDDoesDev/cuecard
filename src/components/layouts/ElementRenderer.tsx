@@ -1,4 +1,3 @@
-import { vs2015 } from 'react-syntax-highlighter/dist/esm/styles/hljs';
 import { useState, useEffect } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -16,6 +15,7 @@ import { scaleInlineFontSizes } from '@/lib/editor/fontSizeExtension';
 import { getElementTextAlign } from '@/lib/editor/textAlign';
 import { inlineMarkdownToHtml as listInlineMarkdownToHtml } from '@/lib/editor/listItems';
 import { SyntaxHighlighter, resolveCodeLanguage } from '@/lib/code/languages';
+import { oneDarkStyle, ONE_DARK, CODE_FONT_FAMILY } from '@/lib/code/oneDarkTheme';
 import { ShapeRenderer } from './ShapeRenderer';
 import styles from './ElementRenderer.module.css';
 
@@ -283,18 +283,20 @@ export function ElementRenderer({ element, visibleFragment, staticExport }: Elem
 
     case 'code': {
       const highlightLines = element.highlightLines || [];
+      const language = resolveCodeLanguage(element.language);
       return (
         <div className={styles.codeContainer}>
           <SyntaxHighlighter
-            language={resolveCodeLanguage(element.language)}
-            style={vs2015}
+            language={language}
+            style={oneDarkStyle(language)}
             showLineNumbers={true}
+            lineNumberStyle={{ color: ONE_DARK.lineNumber, fontStyle: 'normal' }}
             wrapLines={true}
             lineProps={(lineNumber) => {
               const style: React.CSSProperties = {};
               if (highlightLines.includes(lineNumber)) {
-                style.backgroundColor = 'rgba(255, 255, 0, 0.15)';
-                style.borderLeft = '3px solid #ffeb3b';
+                style.backgroundColor = ONE_DARK.lineHighlight;
+                style.borderLeft = `3px solid ${ONE_DARK.cursor}`;
                 style.paddingLeft = '0.5em';
                 style.display = 'block';
               }
@@ -303,6 +305,7 @@ export function ElementRenderer({ element, visibleFragment, staticExport }: Elem
             customStyle={{
               margin: 0,
               padding: 'var(--space-lg)',
+              fontFamily: CODE_FONT_FAMILY,
               fontSize: 'var(--font-size-base)',
               borderRadius: 'var(--radius-md)',
               lineHeight: 1.6,
