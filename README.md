@@ -142,6 +142,7 @@ Markdown export round-trips everything the editor can do. When a slide matches w
 - The block directly after an `element` directive is that element's content. Further blocks before the next directive are imported as separate, automatically positioned elements (with a warning).
 - Content that can't be written as an unambiguous markdown block (e.g. text containing `---` or `???`) is stored inside the directive JSON instead.
 - Shapes have no markdown form, so their directive stands alone.
+- Rich text edited in the app (paragraphs with bold/italic/strike/code/links, and simple tables with a header row) is exported as plain markdown and GFM pipe tables under a directive with `"richText":true`; its content may span several paragraphs and tables up to the next directive. Formatting markdown can't express (fonts, colors, line spacing, indent, merged cells) is exported as HTML instead. Files using `"richText"` need this version of Cuecard or newer to import back exactly; older versions import the body as markdown text.
 
 ## Fragment Animations (Build/Reveal)
 

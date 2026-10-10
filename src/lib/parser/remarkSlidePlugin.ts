@@ -96,10 +96,10 @@ function notesSeparatorEnd(node: Content, source: string): number | null {
   return newline === -1 ? end : start + newline + 1;
 }
 
-/** Source slice of a node including leading indentation on its first line. */
-function verbatimSlice(node: Content, source: string): string {
+/** Source slice of a node (or node range) including leading indentation on its first line. */
+function verbatimSlice(node: Content, source: string, last: Content = node): string {
   const start = nodeStart(node);
-  const end = nodeEnd(node);
+  const end = nodeEnd(last);
   if (start === undefined || end === undefined) return '';
   let lineStart = start;
   while (lineStart > 0 && (source[lineStart - 1] === ' ' || source[lineStart - 1] === '\t')) lineStart--;
@@ -158,6 +158,22 @@ function createSlide(nodes: Content[], endOffset: number, source: string, warnin
       // Plain HTML comments (author notes, other tools' directives such as
       // Marp's `<!-- _class: lead -->`) are not slide content.
       if (node.type === 'html' && isOnlyComments(htmlValue)) return;
+      // Rich-text bodies (editor HTML exported as markdown, see
+      // richTextMarkdown.ts) span every block up to the next directive.
+      // Only paragraphs and tables (all the rich form produces) are absorbed;
+      // anything else (hand-added headings, lists…) becomes its own element.
+      if (
+        segment &&
+        segment.extra.length === 0 &&
+        segment.props?.type === 'text' &&
+        segment.props.richText === true &&
+        !Object.hasOwn(segment.props, 'content') &&
+        (node.type === 'paragraph' || node.type === 'table')
+      ) {
+        segment.body = verbatimSlice(segment.nodes[0], source, node);
+        segment.nodes.push(node);
+        return;
+      }
       if (segment) {
         // Content added after an element body (e.g. hand edits) becomes its own element.
         segment.extra.push(node);

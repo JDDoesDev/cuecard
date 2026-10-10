@@ -6,6 +6,17 @@ import {
   applyAlignToBlocks,
 } from './textAlign';
 import { splitListItem } from './listItems';
+import { normalizeLineHeight } from './blockFormat';
+
+/** ` style="text-align: …; line-height: …"` for a single-block element ('' when neither). */
+function blockStyleAttr(align: string, lineHeight: number | undefined): string {
+  const parts: string[] = [];
+  const alignAttr = textAlignStyleAttr(align);
+  if (alignAttr) parts.push(alignAttr.slice(' style="'.length, -1));
+  const lh = normalizeLineHeight(lineHeight);
+  if (lh != null) parts.push(`line-height: ${lh}`);
+  return parts.length > 0 ? ` style="${parts.join('; ')}"` : '';
+}
 
 /**
  * Convert a single slide element to an HTML string for Tiptap to parse.
@@ -41,7 +52,8 @@ export function elementToHTML(element: SlideElement): string {
 
   switch (element.type) {
     case 'heading':
-      return `<h${element.level}${alignAttr}>${element.content}</h${element.level}>`;
+      // Element-level line height is shown as the heading block's line height
+      return `<h${element.level}${blockStyleAttr(align, element.lineHeight)}>${element.content}</h${element.level}>`;
 
     case 'text': {
       // If content already contains HTML block tags, pass through
@@ -65,6 +77,7 @@ export function elementToHTML(element: SlideElement): string {
     }
 
     case 'list': {
+      const itemAttr = blockStyleAttr(align, element.lineHeight);
       const tag = element.ordered ? 'ol' : 'ul';
       const start = Number(element.start);
       const startAttr = element.ordered && Number.isInteger(start) && start >= 0 && start !== 1
@@ -74,7 +87,7 @@ export function elementToHTML(element: SlideElement): string {
         .map((item) => {
           // Separate the item's own text from its nested sub-lists
           const { text, nested } = splitListItem(item);
-          return `<li><p${alignAttr}>${text}</p>${nested}</li>`;
+          return `<li><p${itemAttr}>${text}</p>${nested}</li>`;
         })
         .join('');
       return `<${tag}${startAttr}>${items}</${tag}>`;

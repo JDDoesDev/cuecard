@@ -25,7 +25,7 @@ import universalStyles from '@/components/layouts/UniversalSlide.module.css';
 import slideStyles from '@/components/Slide/Slide.module.css';
 import { computeTotalFragments } from '@/lib/fragments';
 import { embedImagesForExport } from '@/lib/media/imageRestore';
-import { escapeHtml, sanitizeHtml } from '@/lib/security/sanitize';
+import { escapeHtml, sanitizeRenderedHtml } from '@/lib/security/sanitize';
 import { getCustomThemeCss, isCustomThemeId } from '@/lib/theme/themeManager';
 import { buildHtmlSrcdoc, frameFontFamilies, type HtmlFrameStyle } from '@/components/layouts/HtmlFrame';
 import { buildInlineFontCss, htmlUsesItalic } from '@/lib/fonts/fontInline';
@@ -316,7 +316,8 @@ function renderElementInner(
     case 'heading':
     case 'text':
     case 'list':
-      tpl.innerHTML = sanitizeHtml(markup);
+      // Renderer output: its own styles stay; user rich text inside was sanitized at render
+      tpl.innerHTML = sanitizeRenderedHtml(markup);
       break;
     case 'html': {
       tpl.innerHTML = markup;

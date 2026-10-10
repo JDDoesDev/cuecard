@@ -1,15 +1,68 @@
 import DOMPurify from 'dompurify';
+import { filterInlineStyle } from './inlineStyle';
+
+export { filterInlineStyle, isSafeCssColor } from './inlineStyle';
+
+/**
+ * Style handling of the running sanitize call: 'rich' = user-authored rich
+ * text (strict allowlist), 'rendered' = app-generated markup (any property,
+ * but no url()/expression()/escapes), null = other DOMPurify users (untouched).
+ */
+let styleMode: 'rich' | 'rendered' | null = null;
+let hookInstalled = false;
+
+function installStyleHook(): void {
+  if (hookInstalled) return;
+  hookInstalled = true;
+  DOMPurify.addHook('uponSanitizeAttribute', (_node, data) => {
+    if (!styleMode || data.attrName !== 'style') return;
+    if (styleMode === 'rendered') {
+      if (/url\s*\(|expression\s*\(|\\|@import|javascript:/i.test(data.attrValue)) data.keepAttr = false;
+      return;
+    }
+    const filtered = filterInlineStyle(data.attrValue);
+    if (filtered) data.attrValue = filtered;
+    else data.keepAttr = false;
+  });
+}
+
+const RICH_TEXT_CONFIG = {
+  USE_PROFILES: { html: true },
+  ADD_TAGS: ['table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td', 'colgroup', 'col'],
+  ADD_ATTR: ['target', 'style', 'colspan', 'rowspan', 'colwidth', 'span'],
+};
+
+function sanitizeWith(mode: 'rich' | 'rendered', html: string): string {
+  installStyleHook();
+  styleMode = mode;
+  try {
+    return DOMPurify.sanitize(html, RICH_TEXT_CONFIG);
+  } finally {
+    styleMode = null;
+  }
+}
+
+/**
+ * Sanitize markup the app itself rendered (e.g. ElementRenderer output in the
+ * HTML export): strips scripts, handlers and javascript: URLs but keeps the
+ * renderer's own inline styles (layout, list-style-position…), rejecting only
+ * url()/expression() in them. User rich text inside it was already reduced to
+ * the strict allowlist by sanitizeHtml at render time.
+ */
+export function sanitizeRenderedHtml(html: string): string {
+  return sanitizeWith('rendered', html);
+}
 
 /**
  * Sanitize rich-text HTML (headings, text, lists) before injecting it with
  * dangerouslySetInnerHTML. Strips scripts, event handlers and javascript: URLs
- * while keeping inline formatting (Tiptap marks, links, inline styles).
+ * while keeping inline formatting (Tiptap marks, links, `data-indent`,
+ * `data-color`) and tables (including merged cells and Tiptap column widths).
+ * Inline styles are reduced to the allowed text properties with validated
+ * values (see inlineStyle.ts): no positioning, z-index or url() requests.
  */
 export function sanitizeHtml(html: string): string {
-  return DOMPurify.sanitize(html, {
-    USE_PROFILES: { html: true },
-    ADD_ATTR: ['target', 'style'],
-  });
+  return sanitizeWith('rich', html);
 }
 
 /**

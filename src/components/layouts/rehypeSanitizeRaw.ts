@@ -1,4 +1,4 @@
-import { sanitizeUrl } from '@/lib/security/sanitize';
+import { sanitizeUrl, filterInlineStyle } from '@/lib/security/sanitize';
 
 // ============================================================================
 // Minimal rehype sanitizer for raw HTML parsed by rehype-raw
@@ -34,6 +34,11 @@ function clean(node: HastNode): void {
         for (const key of Object.keys(props)) {
           if (/^on/i.test(key)) {
             delete props[key];
+          } else if (key === 'style') {
+            // Same inline style policy as rich-text HTML (no positioning / url())
+            const style = filterInlineStyle(String(props[key] ?? ''));
+            if (style) props[key] = style;
+            else delete props[key];
           } else if (URL_PROPERTIES.has(key)) {
             const value = props[key];
             const str = Array.isArray(value) ? value.join(' ') : String(value ?? '');

@@ -1,5 +1,6 @@
 import type { Content } from 'mdast';
 import { inlineMarkdownToHtml } from '@/lib/editor/listItems';
+import { richMarkdownToHtml } from '@/lib/editor/richTextMarkdown';
 import type { z } from 'zod';
 import type { ElementPosition, LayoutPreset, SlideElement } from '@/types/slide';
 import {
@@ -425,7 +426,23 @@ function segmentToDrafts(
 
   switch (props.type as ElementType) {
     case 'text':
-      if (!Object.hasOwn(props, 'content')) candidate.content = body;
+      // richText: the body is the markdown form of editor HTML (see richTextMarkdown.ts)
+      if (!Object.hasOwn(props, 'content')) {
+        if (props.richText === true) {
+          const html = richMarkdownToHtml(body);
+          if (html === null && body !== '') {
+            warnings.push('Rich text element body is not in the supported markdown form; imported as markdown.');
+          }
+          candidate.content = html ?? body;
+        } else {
+          candidate.content = body;
+        }
+      } else if (props.richText === true) {
+        // The directive's own content wins; any body is kept as separate element(s)
+        warnings.push('Text element has both "content" and "richText"; the directive content was used.');
+        extras.push(...nodes.flatMap((node) => nodeToElements(node, source)));
+      }
+      delete candidate.richText;
       break;
     case 'html':
       if (!Object.hasOwn(props, 'htmlContent')) candidate.htmlContent = body;

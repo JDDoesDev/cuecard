@@ -47,7 +47,8 @@ export function collectPresentationFonts(
         if ('content' in el && typeof el.content === 'string') texts.push(el.content);
         if ('items' in el && Array.isArray(el.items)) texts.push(...el.items.filter((i): i is string => typeof i === 'string'));
         for (const text of texts) {
-          for (const m of text.matchAll(/font-family:\s*([^;"]+)/gi)) stacks.push(m[1]);
+          // Stored HTML quotes family names as &quot; (whose ';' is not a declaration end)
+          for (const m of text.matchAll(/font-family:\s*((?:&quot;|&#39;|[^;"<>])+)/gi)) stacks.push(m[1]);
         }
       }
     }

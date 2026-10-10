@@ -1010,3 +1010,108 @@ describe('nested lists and ordered list start', () => {
     expect(computeTotalFragments(parsed.slides[0])).toBe(2);
   });
 });
+
+// ============================================================================
+// Rich-text editor features (links, tables, fonts, line height, indent)
+// ============================================================================
+
+describe('rich text editor features round-trip', () => {
+  const textEl = (content: string, extra: Partial<SlideElement> = {}): SlideElement =>
+    ({ id: id(), type: 'text', position: pos(5, 5, 60, 40), content, ...extra }) as SlideElement;
+
+  it('links in editor HTML export as markdown [text](url)', async () => {
+    const { md } = await expectLossless(deck([slide([textEl('<p>See <a href="https://example.com/a?b=1&amp;c=2">the <strong>docs</strong></a> now</p><p>mail <a href="mailto:me@example.com">me</a></p>')])]));
+    expect(md).toContain('"richText":true');
+    expect(md).toContain('See [the **docs**](https://example.com/a?b=1&c=2) now\n\nmail [me](mailto:me@example.com)');
+  });
+
+  it('simple tables export as GFM pipe tables (pipes escaped)', async () => {
+    const content =
+      '<p>Intro</p><table><tbody><tr><th>Name</th><th>A | B</th></tr><tr><td><em>x</em></td><td><code>p|q</code></td></tr><tr><td></td><td><a href="https://x.org">l</a></td></tr></tbody></table><p>After</p>';
+    const { md, parsed } = await expectLossless(deck([slide([textEl(content, { textAlign: 'center', fragment: 1 })])]));
+    expect(md).toContain('| Name | A \\| B |\n| --- | --- |\n| *x* | `p\\|q` |\n|  | [l](https://x.org) |');
+    expect((parsed.slides[0].elements[0] as { content: string }).content).toBe(content);
+  });
+
+  const fallbacks: Array<[string, string]> = [
+    ['merged cells', '<table><tbody><tr><th colspan="2">Wide</th></tr><tr><td>a</td><td>b</td></tr></tbody></table>'],
+    ['no header row', '<table><tbody><tr><td>a</td><td>b</td></tr></tbody></table>'],
+    ['block content in cells', '<table><tbody><tr><th>H</th></tr><tr><td><p>p1</p><p>p2</p></td></tr></tbody></table>'],
+    ['list in a cell', '<table><tbody><tr><th>H</th></tr><tr><td><ul><li><p>x</p></li></ul></td></tr></tbody></table>'],
+    ['column widths', '<table><tbody><tr><th colwidth="120">H</th></tr><tr><td colwidth="120">x</td></tr></tbody></table>'],
+    ['font family span', '<p>plain <span style="font-family: &quot;Playfair Display&quot;, serif;">fancy</span></p>'],
+    ['line height', '<p>one</p><p style="line-height: 1.5;">two</p>'],
+    ['indent', '<p>one</p><p data-indent="2" style="margin-left: 2em;">two</p>'],
+    ['indent + align + line height', '<p data-indent="1" style="text-align: center; line-height: 2; margin-left: 1em;">x</p><p>y</p>'],
+    ['highlight + color + underline', '<p><mark data-color="#ffff00" style="background-color: #ffff00; color: inherit;">hi</mark> <u>u</u> <span style="color: rgb(192, 0, 0);">c</span></p>'],
+    ['empty paragraphs', '<p>a</p><p></p><p>b</p>'],
+    ['blank lines in a cell', '<table><tbody><tr><th>a<br>b</th></tr></tbody></table>'],
+  ];
+  for (const [name, content] of fallbacks) {
+    it(`falls back losslessly: ${name}`, async () => {
+      const { md } = await expectLossless(deck([slide([textEl(content), textEl('next')])]));
+      expect(md).not.toContain('"richText"');
+      expect(md).not.toContain('| --- |');
+    });
+  }
+
+  it('heading and list line height stay element-level', async () => {
+    await expectLossless(deck([slide([
+      { id: id(), type: 'heading', position: pos(1, 1), content: 'Title <span style="font-family: &quot;Lato&quot;, sans-serif;">x</span>', level: 1, lineHeight: 1.1 },
+      { id: id(), type: 'list', position: pos(1, 30), items: ['a', '<a href="https://x.org">b</a>'], ordered: false, lineHeight: 1.8 },
+    ])]));
+  });
+
+  it('richText markdown that is not convertible imports verbatim', async () => {
+    const { presentation, warnings } = await parsePresentationWithWarnings(
+      '<!-- element: {"type":"text","position":{"x":1,"y":1,"width":10,"height":10},"richText":true} -->\n\n> quote',
+    );
+    expect(warnings).toEqual(['Rich text element body is not in the supported markdown form; imported as markdown.']);
+    const el = presentation.slides[0].elements[0] as { content: string; richText?: unknown };
+    expect(el.content).toBe('> quote');
+    expect('richText' in el).toBe(false);
+  });
+
+  it('.cuecard.json save/open keeps every feature verbatim', async () => {
+    const { serializePresentationFile, parsePresentationFile } = await import('../../storage/fileStorage');
+    const p = deck([slide([
+      textEl('<p><a href="https://x.org">l</a> <span style="font-family: &quot;Lato&quot;, sans-serif;">f</span></p><table><tbody><tr><th colspan="2">H</th></tr><tr><td>a</td><td>b</td></tr></tbody></table><p data-indent="2" style="line-height: 1.5; margin-left: 2em;">x</p>', { lineHeight: 1.3 }),
+      { id: id(), type: 'heading', position: pos(1, 1), content: 'T', level: 2, lineHeight: 1.1 },
+    ])]);
+    const reopened = await parsePresentationFile(await serializePresentationFile(p));
+    expect(normalize(reopened)).toEqual(normalize(p));
+  });
+
+  it('hand-written pipe tables stay markdown (not converted to HTML)', async () => {
+    const p = await expectStableImport('| a | b |\n|---|---|\n| 1 | 2 |');
+    expect((p.slides[0].elements[0] as { content: string }).content).toBe('| a | b |\n|---|---|\n| 1 | 2 |');
+  });
+});
+
+describe('richText bodies and hand edits', () => {
+  const head = '<!-- element: {"type":"text","position":{"x":1,"y":1,"width":10,"height":10},"richText":true} -->';
+
+  it('content appended by hand after a rich body becomes separate elements', async () => {
+    const { presentation, warnings } = await parsePresentationWithWarnings(`${head}\n\nHello **b**\n\n# Added\n\n- item`);
+    const els = presentation.slides[0].elements;
+    expect(els.map((e) => e.type)).toEqual(['text', 'heading', 'list']);
+    expect((els[0] as { content: string }).content).toBe('<p>Hello <strong>b</strong></p>');
+    expect(warnings.some((w) => /separate element/.test(w))).toBe(true);
+  });
+
+  it('"content" together with richText: directive content wins, body kept separately', async () => {
+    const md = '<!-- element: {"type":"text","position":{"x":1,"y":1,"width":10,"height":10},"richText":true,"content":"<p>A</p>"} -->\n\nB';
+    const { presentation, warnings } = await parsePresentationWithWarnings(md);
+    const els = presentation.slides[0].elements as Array<{ content: string }>;
+    expect(els[0].content).toBe('<p>A</p>');
+    expect(els[1].content).toBe('B');
+    expect(warnings.some((w) => /both "content" and "richText"/.test(w))).toBe(true);
+  });
+
+  it('aligned GFM tables are kept as markdown with a warning', async () => {
+    const table = '| a | b |\n| :-: | --: |\n| 1 | 2 |';
+    const { presentation, warnings } = await parsePresentationWithWarnings(`${head}\n\n${table}`);
+    expect((presentation.slides[0].elements[0] as { content: string }).content).toBe(table);
+    expect(warnings.some((w) => /supported markdown form/.test(w))).toBe(true);
+  });
+});

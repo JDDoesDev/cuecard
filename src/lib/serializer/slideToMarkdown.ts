@@ -3,6 +3,8 @@ import type { SlideElement } from '../../types/slide';
 import { directive, encodeDirectiveJson } from '../parser/directives';
 import { parsePresentationSync } from '../parser/parsePresentation';
 import { inlineMarkdownToHtml, splitListItem, type NestedList } from '../editor/listItems';
+import { htmlToRichMarkdown } from '../editor/richTextMarkdown';
+import { hasBlockHtml } from '../editor/textAlign';
 
 /**
  * Markdown export format (lossless app -> md -> app):
@@ -138,6 +140,20 @@ function encodeElement(element: SlideElement): EncodedElement {
     const { position: _position, ...rest } = obj;
     return rest;
   };
+
+  // Rich-text (editor HTML) text content that markdown can express exactly is
+  // written as markdown; `"richText":true` tells the importer to convert it back.
+  const richBody = element.type === 'text' && hasBlockHtml(element.content) ? htmlToRichMarkdown(element.content) : null;
+  if (richBody) {
+    const richProps = { ...props, richText: true };
+    const candidate = [...prefix, directive('element', encodeDirectiveJson(richProps)), richBody];
+    if (elementRoundTrips(candidate, element)) {
+      return {
+        blocks: (omit) => [...prefix, directive('element', encodeDirectiveJson(withoutPosition(richProps, omit))), richBody],
+        plain: null,
+      };
+    }
+  }
 
   const body = elementBody(element);
   if (body !== null && body !== '') {

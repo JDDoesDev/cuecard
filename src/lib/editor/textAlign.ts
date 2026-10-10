@@ -116,6 +116,8 @@ export function collapseBlockAlignment(blocks: HTMLElement[]): {
   uniform: boolean;
   align: Exclude<TextAlignValue, 'left'> | undefined;
 } {
+  // Tables have no alignment of their own: they never make alignment mixed
+  blocks = blocks.filter((b) => b.tagName !== 'TABLE');
   if (blocks.length === 0) return { uniform: true, align: undefined };
   const aligns = blocks.map((b) => normalizeTextAlign(b.style.textAlign));
   const first = aligns[0];

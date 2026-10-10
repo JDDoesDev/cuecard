@@ -67,7 +67,10 @@ export const FontSize = Extension.create({
             },
             renderHTML: (attributes: Record<string, unknown>) => {
               if (!attributes.fontSize) return {};
-              return { style: `font-size: ${pxToCqw(String(attributes.fontSize))}` };
+              const size = pxToCqw(String(attributes.fontSize));
+              // Interpolated into a style attribute: plain lengths only
+              if (!/^\d*\.?\d+(?:px|cqw|em|rem|%|pt)$/.test(size)) return {};
+              return { style: `font-size: ${size}` };
             },
           },
         },

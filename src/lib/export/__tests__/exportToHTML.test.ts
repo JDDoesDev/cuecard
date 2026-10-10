@@ -578,3 +578,42 @@ describe('html element fonts (offline)', () => {
     fetchSpy.mockRestore();
   });
 });
+
+describe('exportToHTML: renderer styles vs rich-text style policy', () => {
+  it('keeps renderer-generated styles (aligned list, code highlighting, vertical align)', async () => {
+    const doc = parse(
+      await exportToHTML(
+        deck([
+          { id: 'l', type: 'list', position: pos, items: ['a'], ordered: false, textAlign: 'center' },
+          { id: 'c', type: 'code', position: pos, code: 'const a = "x";', language: 'javascript' },
+          { id: 't', type: 'text', position: pos, content: '<p>mid</p>', verticalAlign: 'middle' },
+        ]),
+        opts,
+      ),
+    );
+    const ul = doc.querySelector<HTMLElement>('[data-element-type=list] ul')!;
+    expect(ul.getAttribute('style')).toMatch(/list-style-position:\s*inside/);
+    expect(ul.getAttribute('style')).toMatch(/text-align:\s*center/);
+    const codeStyles = Array.from(doc.querySelectorAll('[data-element-type=code] [style]')).map((e) => e.getAttribute('style')).join(' ');
+    expect(codeStyles).toMatch(/color:/);
+    expect(codeStyles).toMatch(/background/);
+    const text = doc.querySelector<HTMLElement>('[data-element-type=text]')!;
+    expect(text.getAttribute('style')).toContain('display:flex');
+    expect(text.getAttribute('style')).toContain('align-items:center');
+  });
+
+  it('still strips overlay / tracking styles from rich text', async () => {
+    const html = await exportToHTML(
+      deck([
+        { id: 't', type: 'text', position: pos, content: '<p style="position:fixed;inset:0;z-index:99999;background:url(https://tracker.example/p.gif)">gotcha</p>' },
+        { id: 'm', type: 'text', position: pos, content: 'md <span style="position:fixed;top:0;color:red">x</span>' },
+      ]),
+      opts,
+    );
+    const markup = Array.from(parse(html).querySelectorAll('[data-element-type=text]')).map((e) => e.innerHTML).join('');
+    expect(markup).not.toMatch(/position|tracker\.example|z-index|url\(/);
+    expect(markup).toContain('gotcha');
+    expect(markup).toMatch(/<span style="color: ?red;?">x<\/span>/);
+    expect(html).not.toContain('tracker.example');
+  });
+});
