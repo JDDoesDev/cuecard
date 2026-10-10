@@ -68,6 +68,10 @@ Left column content
 Right column content
 ````
 
+### Code Blocks
+
+Fenced code blocks are syntax-highlighted for the language named after the opening backticks (` ```php `, ` ```javascript `, …). Names are case-insensitive and common short forms work (`js`, `ts`, `py`, `sh`, `yml`, `c++`, `cs`, …). Supported: Bash, C, C++, C#, Clojure, CSS, Dart, Diff, Dockerfile, Elixir, Erlang, F#, Go, Groovy, Haskell, HTML/XML, INI/TOML, Java, JavaScript, JSON, Kotlin, Less, Lua, Makefile, Markdown, Nginx, Objective-C, Perl, PHP, PowerShell, Python, R, Ruby, Rust, Scala, SCSS, SQL, Swift, Twig, TypeScript and YAML (see `src/lib/code/languages.ts`). Other or missing languages render as plain text. The language name is kept as written on export.
+
 ### Frontmatter
 
 Optional YAML at the very top of the file, between `---` lines.

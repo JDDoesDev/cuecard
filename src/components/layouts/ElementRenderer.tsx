@@ -1,16 +1,3 @@
-import SyntaxHighlighter from 'react-syntax-highlighter/dist/esm/light';
-import javascript from 'react-syntax-highlighter/dist/esm/languages/hljs/javascript';
-import typescript from 'react-syntax-highlighter/dist/esm/languages/hljs/typescript';
-import python from 'react-syntax-highlighter/dist/esm/languages/hljs/python';
-import go from 'react-syntax-highlighter/dist/esm/languages/hljs/go';
-import rust from 'react-syntax-highlighter/dist/esm/languages/hljs/rust';
-import css from 'react-syntax-highlighter/dist/esm/languages/hljs/css';
-import xml from 'react-syntax-highlighter/dist/esm/languages/hljs/xml';
-import bash from 'react-syntax-highlighter/dist/esm/languages/hljs/bash';
-import json from 'react-syntax-highlighter/dist/esm/languages/hljs/json';
-import sql from 'react-syntax-highlighter/dist/esm/languages/hljs/sql';
-import php from 'react-syntax-highlighter/dist/esm/languages/hljs/php';
-import twig from 'react-syntax-highlighter/dist/esm/languages/hljs/twig';
 import { vs2015 } from 'react-syntax-highlighter/dist/esm/styles/hljs';
 import { useState, useEffect } from 'react';
 import Markdown from 'react-markdown';
@@ -28,23 +15,9 @@ import { getVisibleItemCount } from '@/lib/fragments';
 import { scaleInlineFontSizes } from '@/lib/editor/fontSizeExtension';
 import { getElementTextAlign } from '@/lib/editor/textAlign';
 import { inlineMarkdownToHtml as listInlineMarkdownToHtml } from '@/lib/editor/listItems';
+import { SyntaxHighlighter, resolveCodeLanguage } from '@/lib/code/languages';
 import { ShapeRenderer } from './ShapeRenderer';
 import styles from './ElementRenderer.module.css';
-
-// Register languages for syntax highlighting
-SyntaxHighlighter.registerLanguage('javascript', javascript);
-SyntaxHighlighter.registerLanguage('typescript', typescript);
-SyntaxHighlighter.registerLanguage('python', python);
-SyntaxHighlighter.registerLanguage('go', go);
-SyntaxHighlighter.registerLanguage('rust', rust);
-SyntaxHighlighter.registerLanguage('css', css);
-SyntaxHighlighter.registerLanguage('xml', xml);
-SyntaxHighlighter.registerLanguage('html', xml);
-SyntaxHighlighter.registerLanguage('bash', bash);
-SyntaxHighlighter.registerLanguage('json', json);
-SyntaxHighlighter.registerLanguage('sql', sql);
-SyntaxHighlighter.registerLanguage('php', php);
-SyntaxHighlighter.registerLanguage('twig', twig);
 
 /**
  * Image component that restarts GIF animations when the slide is entered.
@@ -313,7 +286,7 @@ export function ElementRenderer({ element, visibleFragment, staticExport }: Elem
       return (
         <div className={styles.codeContainer}>
           <SyntaxHighlighter
-            language={element.language}
+            language={resolveCodeLanguage(element.language)}
             style={vs2015}
             showLineNumbers={true}
             wrapLines={true}

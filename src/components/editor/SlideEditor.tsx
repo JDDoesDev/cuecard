@@ -35,7 +35,7 @@ import { useElementSelection } from '@/hooks/useElementSelection';
 import type { SlideElement, ElementPosition } from '@/types/slide';
 import { getAvailableFonts } from '@/lib/fonts/availableFonts';
 import { useTheme } from '@/components/ThemeProvider/ThemeProvider';
-import SyntaxHighlighter from 'react-syntax-highlighter/dist/esm/light';
+import { SyntaxHighlighter, CODE_LANGUAGES, codeLanguagePickerValue } from '@/lib/code/languages';
 import { vs2015 } from 'react-syntax-highlighter/dist/esm/styles/hljs';
 import styles from './SlideEditor.module.css';
 
@@ -728,6 +728,8 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
   if (editingElement && !isInlineEditing) {
     // Code elements use a textarea + language selector
     if (editingElement.type === 'code') {
+      const pickerLanguage = codeLanguagePickerValue(editingElement.language);
+      const isUnknownLanguage = pickerLanguage !== 'text' && !CODE_LANGUAGES.some((l) => l.id === pickerLanguage);
       return (
         <div className={`${styles.editorContainer} ${className}`}>
           <div className={styles.editorHeader}>
@@ -740,25 +742,21 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
             <span className={styles.elementLabel}>Code</span>
             <select
               className={styles.languageSelect}
-              value={editingElement.language}
+              aria-label="Code language"
+              value={pickerLanguage}
               onChange={(e) => {
                 store.updateElement(slideIndex, editingElement.id, {
                   language: e.target.value,
                 } as any);
               }}
             >
-              <option value="typescript">TypeScript</option>
-              <option value="javascript">JavaScript</option>
-              <option value="python">Python</option>
-              <option value="go">Go</option>
-              <option value="rust">Rust</option>
-              <option value="css">CSS</option>
-              <option value="html">HTML</option>
-              <option value="bash">Bash</option>
-              <option value="json">JSON</option>
-              <option value="sql">SQL</option>
-              <option value="php">PHP</option>
-              <option value="twig">Twig</option>
+              {isUnknownLanguage && (
+                <option value={pickerLanguage}>{pickerLanguage} (not highlighted)</option>
+              )}
+              <option value="text">Plain text</option>
+              {CODE_LANGUAGES.map((lang) => (
+                <option key={lang.id} value={lang.id}>{lang.label}</option>
+              ))}
             </select>
           </div>
           <textarea
