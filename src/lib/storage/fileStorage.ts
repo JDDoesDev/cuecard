@@ -62,7 +62,18 @@ const FILE_OPTIONS = {
       accept: { 'application/json': ['.cuecard.json', '.json'] },
     },
   ],
+  // Keeps Cuecard's picker folder separate from other sites' pickers.
+  id: 'cuecard-deck',
 };
+
+/**
+ * Start next to the open deck file when there is one, else in Documents.
+ * Without a start folder Chrome may open a protected one (home root, system
+ * folders) and refuse with "contains system files"; Documents is always allowed.
+ */
+function startIn(): WellKnownDirectory | FileSystemFileHandle {
+  return currentFileHandle ?? 'documents';
+}
 
 /**
  * Save presentation to a file. If a file handle exists, writes to it silently.
@@ -94,6 +105,7 @@ export async function saveToFile(
       const handle = await window.showSaveFilePicker({
         suggestedName: sanitizeFileName(presentation.title) + '.cuecard.json',
         ...FILE_OPTIONS,
+        startIn: startIn(),
       });
       const writable = await handle.createWritable();
       await writable.write(json);
@@ -166,6 +178,7 @@ export async function openFromFile(): Promise<{
     try {
       const [handle] = await window.showOpenFilePicker({
         ...FILE_OPTIONS,
+        startIn: startIn(),
         multiple: false,
       });
       const file = await handle.getFile();

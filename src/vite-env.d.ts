@@ -18,13 +18,20 @@ interface FilePickerAcceptType {
   accept: Record<string, string[]>;
 }
 
-interface SaveFilePickerOptions {
-  suggestedName?: string;
+type WellKnownDirectory = 'desktop' | 'documents' | 'downloads' | 'music' | 'pictures' | 'videos';
+
+interface FilePickerOptions {
   types?: FilePickerAcceptType[];
+  /** Chromium remembers the last-used folder per id. */
+  id?: string;
+  startIn?: WellKnownDirectory | FileSystemFileHandle;
 }
 
-interface OpenFilePickerOptions {
-  types?: FilePickerAcceptType[];
+interface SaveFilePickerOptions extends FilePickerOptions {
+  suggestedName?: string;
+}
+
+interface OpenFilePickerOptions extends FilePickerOptions {
   multiple?: boolean;
 }
 
