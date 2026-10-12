@@ -35,7 +35,7 @@ export function buildRuntimeCss(ratio: { w: number; h: number }): string {
 :where(.xel[data-element-type=image]) :where(img){width:100%;height:100%;object-fit:contain}
 :where(.xel[data-element-type=image]) :where(img[data-fit=cover]){object-fit:cover}
 :where(.xel[data-element-type=video]) :where(video,iframe){width:100%;height:100%;border:0}
-:where(.xel[data-element-type=code]) > :where(div){width:100%;height:100%;overflow:auto;border-radius:var(--radius-md)}
+:where(.xel[data-element-type=code]) > :where(div){width:100%;height:100%;overflow:hidden;border-radius:var(--radius-md)}
 :where(.xel[data-element-type=html]) > :where(div){width:100%;height:100%;overflow:hidden}
 
 /* ---- deck chrome ---- */
@@ -108,6 +108,24 @@ function stopMedia(s){
   Array.prototype.forEach.call(s.querySelectorAll('video,audio'),function(v){try{v.pause();}catch(e){}});
   Array.prototype.forEach.call(s.querySelectorAll('iframe[data-video]'),function(f){var u=f.getAttribute('src');f.setAttribute('src',u);});
 }
+// Shrink code text to fit its box (mirrors fitCodeToBox in src/lib/code/fitCode.ts)
+function fitCode(s){
+  function q(a,b){var r=a/b;return isFinite(r)&&r>0?r:1;}
+  Array.prototype.forEach.call(s.querySelectorAll('.xel[data-element-type=code] > div'),function(b){
+    var p=b.querySelector('pre');
+    if(!p||!b.clientWidth||!b.clientHeight)return;
+    var c=getComputedStyle(p);
+    var px=(parseFloat(c.paddingLeft)+parseFloat(c.paddingRight))||0,py=(parseFloat(c.paddingTop)+parseFloat(c.paddingBottom))||0;
+    function m(k){
+      b.style.setProperty('--code-scale',String(k));
+      var r=Math.min(1,q(p.clientWidth-px,p.scrollWidth-px),q(p.clientHeight-py,p.scrollHeight-py));
+      return r<1?Math.floor(r*990)/1000:1;
+    }
+    var k=1;
+    for(var i=0;i<5;i++){var r=m(k);if(r>=1)return;k=Math.max(0.1,Math.floor(k*r*1000)/1000);if(k===0.1)break;}
+    b.style.setProperty('--code-scale',String(k));
+  });
+}
 function render(prev){
   slides.forEach(function(s,i){
     var on=i===cur;
@@ -116,6 +134,7 @@ function render(prev){
     if(!on&&i===prev)stopMedia(s);
   });
   if(!total)return;
+  fitCode(slides[cur]);
   Array.prototype.forEach.call(slides[cur].querySelectorAll('[data-fragment]'),function(n){
     n.classList.toggle('xf-hidden',parseInt(n.getAttribute('data-fragment'),10)>frag);
   });
@@ -183,5 +202,7 @@ document.addEventListener('touchend',function(e){
   if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.5){lastSwipe=Date.now();if(dx<0)next();else prev();}
 },{passive:true});
 window.addEventListener('hashchange',onHash);
+// Refit once fonts arrive: a font only starts loading when text first uses it
+if(document.fonts&&document.fonts.addEventListener)document.fonts.addEventListener('loadingdone',function(){if(total)fitCode(slides[cur]);});
 go(Math.max(0,hashIndex()),0); // always render once so fragments/notes/aria are initialised
 })();`;

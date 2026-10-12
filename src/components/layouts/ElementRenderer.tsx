@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -6,7 +6,7 @@ import { sanitizeHtml, sanitizeUrl } from '@/lib/security/sanitize';
 import { HtmlFrame } from './HtmlFrame';
 import { parseYouTubeUrl, getYouTubeEmbedUrl } from './youtube';
 import { rehypeSanitizeRaw } from './rehypeSanitizeRaw';
-import type { SlideElement, ImageElement } from '@/types/slide';
+import type { SlideElement, ImageElement, CodeElement } from '@/types/slide';
 import { cacheImageBlob } from '@/lib/media/imageCaching';
 import { presentationStore } from '@/store/presentationStore';
 import { usePresentationMode } from '@/hooks/usePresentationMode';
@@ -16,6 +16,7 @@ import { getElementTextAlign } from '@/lib/editor/textAlign';
 import { inlineMarkdownToHtml as listInlineMarkdownToHtml } from '@/lib/editor/listItems';
 import { SyntaxHighlighter, resolveCodeLanguage } from '@/lib/code/languages';
 import { oneDarkStyle, ONE_DARK, CODE_FONT_FAMILY } from '@/lib/code/oneDarkTheme';
+import { fitCodeToBox, CODE_SCALE_VAR } from '@/lib/code/fitCode';
 import { ShapeRenderer } from './ShapeRenderer';
 import styles from './ElementRenderer.module.css';
 
@@ -154,6 +155,68 @@ export function withExternalLinkTargets(html: string): string {
   return changed ? tpl.innerHTML : html;
 }
 
+/**
+ * Code block whose text shrinks to fit the element box instead of scrolling
+ * (see fitCode.ts). Refits when the box resizes, the code changes, or fonts load.
+ */
+function CodeView({ element }: { element: CodeElement }) {
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    const fit = () => fitCodeToBox(box);
+    fit();
+    // A font only starts loading when text first uses it, so refit when any load finishes
+    const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
+    fonts?.addEventListener?.('loadingdone', fit);
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(fit) : null;
+    ro?.observe(box);
+    return () => {
+      fonts?.removeEventListener?.('loadingdone', fit);
+      ro?.disconnect();
+    };
+  }, [element.code, element.language]);
+
+  const highlightLines = element.highlightLines || [];
+  const language = resolveCodeLanguage(element.language);
+  return (
+    <div ref={boxRef} className={styles.codeContainer}>
+      <SyntaxHighlighter
+        language={language}
+        style={oneDarkStyle(language)}
+        showLineNumbers={true}
+        lineNumberStyle={{ color: ONE_DARK.lineNumber, fontStyle: 'normal' }}
+        wrapLines={true}
+        lineProps={(lineNumber) => {
+          const style: React.CSSProperties = {};
+          if (highlightLines.includes(lineNumber)) {
+            style.backgroundColor = ONE_DARK.lineHighlight;
+            style.borderLeft = `3px solid ${ONE_DARK.cursor}`;
+            style.paddingLeft = '0.5em';
+            style.display = 'block';
+          }
+          return { style };
+        }}
+        customStyle={{
+          margin: 0,
+          padding: 'var(--space-lg)',
+          fontFamily: CODE_FONT_FAMILY,
+          fontSize: `calc(var(--font-size-base) * var(${CODE_SCALE_VAR}, 1))`,
+          overflow: 'hidden', // text is fitted, never scrolled (hljs sets overflowX)
+          overflowX: 'hidden',
+          borderRadius: 'var(--radius-md)',
+          lineHeight: 1.6,
+          height: '100%',
+          boxSizing: 'border-box',
+        }}
+      >
+        {element.code}
+      </SyntaxHighlighter>
+    </div>
+  );
+}
+
 interface ElementRendererProps {
   element: SlideElement;
   visibleFragment?: number;
@@ -281,43 +344,8 @@ export function ElementRenderer({ element, visibleFragment, staticExport }: Elem
       );
     }
 
-    case 'code': {
-      const highlightLines = element.highlightLines || [];
-      const language = resolveCodeLanguage(element.language);
-      return (
-        <div className={styles.codeContainer}>
-          <SyntaxHighlighter
-            language={language}
-            style={oneDarkStyle(language)}
-            showLineNumbers={true}
-            lineNumberStyle={{ color: ONE_DARK.lineNumber, fontStyle: 'normal' }}
-            wrapLines={true}
-            lineProps={(lineNumber) => {
-              const style: React.CSSProperties = {};
-              if (highlightLines.includes(lineNumber)) {
-                style.backgroundColor = ONE_DARK.lineHighlight;
-                style.borderLeft = `3px solid ${ONE_DARK.cursor}`;
-                style.paddingLeft = '0.5em';
-                style.display = 'block';
-              }
-              return { style };
-            }}
-            customStyle={{
-              margin: 0,
-              padding: 'var(--space-lg)',
-              fontFamily: CODE_FONT_FAMILY,
-              fontSize: 'var(--font-size-base)',
-              borderRadius: 'var(--radius-md)',
-              lineHeight: 1.6,
-              height: '100%',
-              boxSizing: 'border-box',
-            }}
-          >
-            {element.code}
-          </SyntaxHighlighter>
-        </div>
-      );
-    }
+    case 'code':
+      return <CodeView element={element} />;
 
     case 'image':
       return <ImageView element={element} staticExport={staticExport} />;
