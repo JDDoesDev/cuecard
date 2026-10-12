@@ -10,8 +10,6 @@ function fakeHandle(name = 'deck.cuecard.json') {
   } as unknown as FileSystemFileHandle;
 }
 
-// Chrome refuses protected folders ("contains system files"), so the picker
-// must always be pointed at an allowed starting folder.
 describe('save picker starting folder', () => {
   const picker = vi.fn(async () => fakeHandle());
 
@@ -24,9 +22,11 @@ describe('save picker starting folder', () => {
     delete (window as any).showSaveFilePicker;
   });
 
-  it('starts in Documents with a stable picker id when no file is open', async () => {
+  it("leaves the folder to Chrome (last used) when no file is linked", async () => {
     await saveToFile(createPresentation(), true);
-    expect(picker).toHaveBeenCalledWith(expect.objectContaining({ startIn: 'documents', id: 'cuecard-deck' }));
+    const opts = (picker.mock.calls[0] as unknown[])[0] as SaveFilePickerOptions;
+    expect(opts.startIn).toBeUndefined();
+    expect(opts.id).toBeUndefined();
   });
 
   it('starts next to the open file on Save As', async () => {

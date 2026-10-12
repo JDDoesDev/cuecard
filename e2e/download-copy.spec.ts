@@ -1,8 +1,11 @@
 import fs from 'node:fs';
-import { test, expect, openEditor } from './support/app';
+import { test, expect, openEditor, importMarkdown, fixture, slidePanelItems } from './support/app';
 
-test('Download saves a .cuecard.json copy through the browser downloads', async ({ page, pageErrors }, testInfo) => {
+test('Download and Open round-trip a deck through ordinary browser files', async ({ page, pageErrors }, testInfo) => {
   await openEditor(page);
+  await importMarkdown(page, fixture('sync-deck.md'));
+  const slideCount = await slidePanelItems(page).count();
+
   const [download] = await Promise.all([
     page.waitForEvent('download'),
     page.getByRole('button', { name: 'Download', exact: true }).click(),
@@ -10,7 +13,20 @@ test('Download saves a .cuecard.json copy through the browser downloads', async 
   expect(download.suggestedFilename()).toMatch(/\.cuecard\.json$/);
   const file = testInfo.outputPath(download.suggestedFilename());
   await download.saveAs(file);
-  const json = JSON.parse(fs.readFileSync(file, 'utf8'));
-  expect(json).toBeTruthy();
+  expect(fs.readFileSync(file, 'utf8')).toContain('E2E Sync Deck');
+
+  // Replace the deck, then open the copy through the ordinary file input
+  page.once('dialog', (d) => d.accept());
+  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await expect(slidePanelItems(page)).not.toHaveCount(slideCount);
+
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    page.getByRole('button', { name: 'Open', exact: true }).click(),
+  ]);
+  await chooser.setFiles(file);
+  await expect(slidePanelItems(page)).toHaveCount(slideCount);
+  await expect(page.getByRole('heading', { name: 'Slide One' }).first()).toBeVisible();
+
   expect(pageErrors.messages, 'console errors / page errors').toEqual([]);
 });

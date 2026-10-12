@@ -1,8 +1,9 @@
 /**
  * File System persistence for presentations.
  *
- * Uses the File System Access API when available (Chromium browsers)
- * with fallback to download/upload for other browsers.
+ * Open always uses an ordinary file input (it reaches every folder). Save uses
+ * the File System Access API when available (Chromium browsers), else a
+ * download; Download saves a copy through the browser's downloads.
  */
 
 import type { Presentation } from '@/types/presentation';
@@ -62,17 +63,14 @@ const FILE_OPTIONS = {
       accept: { 'application/json': ['.cuecard.json', '.json'] },
     },
   ],
-  // Keeps Cuecard's picker folder separate from other sites' pickers.
-  id: 'cuecard-deck',
 };
 
 /**
- * Start next to the open deck file when there is one, else in Documents.
- * Without a start folder Chrome may open a protected one (home root, system
- * folders) and refuse with "contains system files"; Documents is always allowed.
+ * Save As starts next to the linked deck file; otherwise Chrome opens the
+ * folder it last used.
  */
-function startIn(): WellKnownDirectory | FileSystemFileHandle {
-  return currentFileHandle ?? 'documents';
+function startIn(): FileSystemFileHandle | undefined {
+  return currentFileHandle ?? undefined;
 }
 
 /**
@@ -181,41 +179,28 @@ export async function writeToCurrentFile(presentation: Presentation): Promise<bo
 // ============================================================================
 
 /**
- * Open a presentation file. Uses File System Access API or fallback file input.
+ * Open a presentation file through the browser's ordinary file input. Unlike
+ * the File System Access picker it can reach every folder (Chrome's picker
+ * refuses some, e.g. \\wsl.localhost paths), on Windows and macOS alike. It
+ * gives no writable handle, so the deck isn't linked to the file: the next
+ * Save asks where to save, and Download saves a copy anywhere.
  */
-export async function openFromFile(): Promise<{
+export function openFromFile(): Promise<{
   success: boolean;
   presentation?: Presentation;
   fileName?: string;
 }> {
-  // File System Access API
-  if (hasFileSystemAccess()) {
-    try {
-      const [handle] = await window.showOpenFilePicker({
-        ...FILE_OPTIONS,
-        startIn: startIn(),
-        multiple: false,
-      });
-      const file = await handle.getFile();
-      const presentation = await parsePresentationFile(await file.text());
-      // Switch the active handle only after a successful parse
-      if (handle !== currentFileHandle) dataUriCache.clear();
-      currentFileHandle = handle;
-      currentFilePresentationId = presentation.id;
-      lastWrittenSignature = contentSignature(presentation);
-      return { success: true, presentation, fileName: handle.name };
-    } catch (e: any) {
-      if (e?.name === 'AbortError') return { success: false }; // User cancelled
-      throw e;
-    }
-  }
-
-  // Fallback: file input
   return new Promise((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json,.cuecard.json';
+    // Keep the input in the document while the picker is open so the browser
+    // can't drop it (and its change event) before a file is chosen
+    input.style.display = 'none';
+    document.body.appendChild(input);
+    const done = () => input.remove();
     input.onchange = async () => {
+      done();
       const file = input.files?.[0];
       if (!file) {
         resolve({ success: false });
@@ -223,7 +208,7 @@ export async function openFromFile(): Promise<{
       }
       try {
         const presentation = await parsePresentationFile(await file.text());
-        // Fallback has no writable handle: drop any stale one so auto-save
+        // No writable handle: drop any stale one so auto-save
         // doesn't write this presentation into the previously opened file.
         setFileHandle(null);
         resolve({ success: true, presentation, fileName: file.name });
@@ -232,7 +217,10 @@ export async function openFromFile(): Promise<{
       }
     };
     // Handle cancel (no file selected)
-    input.addEventListener('cancel', () => resolve({ success: false }));
+    input.addEventListener('cancel', () => {
+      done();
+      resolve({ success: false });
+    });
     input.click();
   });
 }

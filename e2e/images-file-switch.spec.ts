@@ -6,10 +6,10 @@ import { test, expect, fixture, openEditor, editorCanvas, importMarkdown, waitFo
  * Flow: upload image -> save deck -> load a different deck -> reopen the first
  * deck -> image must display (and still display after a page reload).
  *
- * Two variants, because Chromium users take the File System Access API path
- * while other browsers use download + <input type=file>:
+ * Two variants, because Chromium users save through the File System Access
+ * API while other browsers download (Open always uses <input type=file>):
  *  - "download fallback": showSaveFilePicker/showOpenFilePicker removed.
- *  - "File System Access": pickers replaced by in-memory file handles.
+ *  - "File System Access": save picker replaced by in-memory file handles.
  */
 
 async function uploadImage(page: Page) {
@@ -76,7 +76,7 @@ test.describe('images across file switches (download / file-input fallback)', ()
 test.describe('images across file switches (File System Access API)', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
-      // In-memory stand-in for the native file pickers. Files live on window
+      // In-memory stand-in for the native save picker. Files live on window
       // for the lifetime of the document.
       const contents = new Map<string, string>();
       const handles = new Map<string, any>();
@@ -102,14 +102,9 @@ test.describe('images across file switches (File System Access API)', () => {
         return handles.get(name);
       };
       const w = window as any;
-      w.__fakeFs = { contents, nextSaveName: null as string | null, nextOpenName: null as string | null };
+      w.__fakeFs = { contents, nextSaveName: null as string | null };
       w.showSaveFilePicker = async (opts?: { suggestedName?: string }) =>
         handleFor(w.__fakeFs.nextSaveName ?? opts?.suggestedName ?? 'untitled.cuecard.json');
-      w.showOpenFilePicker = async () => {
-        const name = w.__fakeFs.nextOpenName;
-        if (!name || !contents.has(name)) throw new DOMException('No file chosen', 'AbortError');
-        return [handleFor(name)];
-      };
     });
   });
 
@@ -122,9 +117,13 @@ test.describe('images across file switches (File System Access API)', () => {
     await expect.poll(() => fakeFile(page, name)).toBeTruthy();
   }
 
+  // Open always uses the ordinary file input (it reaches folders the picker
+  // refuses), so hand it the in-memory file's contents.
   async function open(page: Page, name: string) {
-    await page.evaluate((n) => { (window as any).__fakeFs.nextOpenName = n; }, name);
+    const text = await fakeFile(page, name);
+    const chooserPromise = page.waitForEvent('filechooser');
     await page.getByRole('button', { name: 'Open', exact: true }).click();
+    await (await chooserPromise).setFiles({ name, mimeType: 'application/json', buffer: Buffer.from(text ?? '') });
   }
 
   test('image survives save -> open other deck -> reopen -> reload', async ({ page }) => {

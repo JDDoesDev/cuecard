@@ -120,7 +120,8 @@ export function EditorToolbar({
       const result = await openFromFile();
       if (result.success && result.presentation) {
         store.setPresentation(result.presentation);
-        if (result.fileName) setCurrentFileName(result.fileName);
+        // Opened decks aren't linked to their file, so don't show it as the save target
+        setCurrentFileName(null);
       }
     } catch (e) {
       console.error('Open failed:', e);
