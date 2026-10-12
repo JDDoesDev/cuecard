@@ -14,7 +14,6 @@ import type { Presentation } from '@/types/presentation';
 import type { ImageElement } from '@/types/slide';
 import {
   buildPresentationFile,
-  contentSignature,
   serializePresentationFile,
   parsePresentationFile,
   formatValidationError,
@@ -123,12 +122,5 @@ describe('presentation file assets', () => {
     const u2 = await computeImageRestoreUpdates(openedNew);
     expect(u2).toHaveLength(1);
     expect(u2[0].cachedUrl).toMatch(/^blob:/);
-  });
-
-  it('content signature ignores session cachedUrl changes', () => {
-    const a = makePresentation('image:k', 'blob:one');
-    const b = makePresentation('image:k', 'blob:two');
-    expect(contentSignature(a)).toBe(contentSignature(b));
-    expect(contentSignature(a)).not.toBe(contentSignature({ ...a, title: 'changed' }));
   });
 });

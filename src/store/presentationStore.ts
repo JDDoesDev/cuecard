@@ -7,7 +7,6 @@ import type { SlideElement, LayoutPreset } from '@/types/slide';
 import { createPresetElements } from '@/lib/presets/layoutPresets';
 import {
   persistConfig,
-  setupFileAutoSave,
   setupStorageSync,
   setStorageStatusHandler,
   resolveStorageConflict as resolveAutosaveConflict,
@@ -579,9 +578,6 @@ setStorageStatusHandler((patch) => {
     state.setStorageConflict(patch.storageConflict);
   }
 });
-
-// Auto-save to filesystem when a file handle is active
-setupFileAutoSave(presentationStore);
 
 // Cross-window sync: presenter/audience live-update; detect other editor tabs
 setupStorageSync(presentationStore, {

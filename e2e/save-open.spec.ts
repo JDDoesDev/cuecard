@@ -1,14 +1,14 @@
 import fs from 'node:fs';
 import { test, expect, openEditor, importMarkdown, fixture, slidePanelItems } from './support/app';
 
-test('Download and Open round-trip a deck through ordinary browser files', async ({ page, pageErrors }, testInfo) => {
+test('Save downloads a deck that Open loads again', async ({ page, pageErrors }, testInfo) => {
   await openEditor(page);
   await importMarkdown(page, fixture('sync-deck.md'));
   const slideCount = await slidePanelItems(page).count();
 
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: 'Download', exact: true }).click(),
+    page.getByRole('button', { name: 'Save', exact: true }).click(),
   ]);
   expect(download.suggestedFilename()).toMatch(/\.cuecard\.json$/);
   const file = testInfo.outputPath(download.suggestedFilename());

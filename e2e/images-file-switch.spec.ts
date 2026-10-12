@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import type { Page } from '@playwright/test';
 import { test, expect, fixture, openEditor, editorCanvas, importMarkdown, waitForAutosave } from './support/app';
 
@@ -6,10 +7,7 @@ import { test, expect, fixture, openEditor, editorCanvas, importMarkdown, waitFo
  * Flow: upload image -> save deck -> load a different deck -> reopen the first
  * deck -> image must display (and still display after a page reload).
  *
- * Two variants, because Chromium users save through the File System Access
- * API while other browsers download (Open always uses <input type=file>):
- *  - "download fallback": showSaveFilePicker/showOpenFilePicker removed.
- *  - "File System Access": save picker replaced by in-memory file handles.
+ * Save downloads the file and Open uses <input type=file>.
  */
 
 async function uploadImage(page: Page) {
@@ -40,15 +38,7 @@ async function expectFirstDeckWithImage(page: Page) {
   await expectCanvasImageLoaded(page);
 }
 
-test.describe('images across file switches (download / file-input fallback)', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => {
-      // Force the non-File-System-Access code path
-      delete (window as any).showSaveFilePicker;
-      delete (window as any).showOpenFilePicker;
-    });
-  });
-
+test.describe('images across file switches', () => {
   test('image survives save -> open other deck -> reopen -> reload', async ({ page }, testInfo) => {
     await openEditor(page);
     await uploadImage(page);
@@ -59,6 +49,8 @@ test.describe('images across file switches (download / file-input fallback)', ()
     expect(download.suggestedFilename()).toMatch(/\.cuecard\.json$/);
     const savedPath = testInfo.outputPath(download.suggestedFilename());
     await download.saveAs(savedPath);
+    // Uploaded images are embedded so the file works on another machine
+    expect(fs.readFileSync(savedPath, 'utf8')).toContain('"assets"');
 
     await loadOtherDeck(page);
 
@@ -70,105 +62,5 @@ test.describe('images across file switches (download / file-input fallback)', ()
     await waitForAutosave(page, 'Welcome');
     await page.reload();
     await expectFirstDeckWithImage(page);
-  });
-});
-
-test.describe('images across file switches (File System Access API)', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => {
-      // In-memory stand-in for the native save picker. Files live on window
-      // for the lifetime of the document.
-      const contents = new Map<string, string>();
-      const handles = new Map<string, any>();
-      class FakeFileHandle {
-        kind = 'file' as const;
-        constructor(public name: string) {}
-        async createWritable() {
-          const parts: BlobPart[] = [];
-          return {
-            write: async (data: any) => { parts.push(data?.data ?? data); },
-            close: async () => { contents.set(this.name, await new Blob(parts).text()); },
-          };
-        }
-        async getFile() {
-          return new File([contents.get(this.name) ?? ''], this.name, { type: 'application/json' });
-        }
-        async queryPermission() { return 'granted'; }
-        async requestPermission() { return 'granted'; }
-        async isSameEntry(other: unknown) { return other === this; }
-      }
-      const handleFor = (name: string) => {
-        if (!handles.has(name)) handles.set(name, new FakeFileHandle(name));
-        return handles.get(name);
-      };
-      const w = window as any;
-      w.__fakeFs = { contents, nextSaveName: null as string | null };
-      w.showSaveFilePicker = async (opts?: { suggestedName?: string }) =>
-        handleFor(w.__fakeFs.nextSaveName ?? opts?.suggestedName ?? 'untitled.cuecard.json');
-    });
-  });
-
-  const fakeFile = (page: Page, name: string) =>
-    page.evaluate((n) => (window as any).__fakeFs.contents.get(n) as string | undefined, name);
-
-  async function saveAs(page: Page, name: string) {
-    await page.evaluate((n) => { (window as any).__fakeFs.nextSaveName = n; }, name);
-    await page.getByRole('button', { name: 'Save', exact: true }).click();
-    await expect.poll(() => fakeFile(page, name)).toBeTruthy();
-  }
-
-  // Open always uses the ordinary file input (it reaches folders the picker
-  // refuses), so hand it the in-memory file's contents.
-  async function open(page: Page, name: string) {
-    const text = await fakeFile(page, name);
-    const chooserPromise = page.waitForEvent('filechooser');
-    await page.getByRole('button', { name: 'Open', exact: true }).click();
-    await (await chooserPromise).setFiles({ name, mimeType: 'application/json', buffer: Buffer.from(text ?? '') });
-  }
-
-  test('image survives save -> open other deck -> reopen -> reload', async ({ page }) => {
-    await openEditor(page);
-    await uploadImage(page);
-    await saveAs(page, 'first.cuecard.json');
-    expect(await fakeFile(page, 'first.cuecard.json')).toContain('"assets"');
-
-    await loadOtherDeck(page);
-    await open(page, 'first.cuecard.json');
-    await expectFirstDeckWithImage(page);
-
-    await waitForAutosave(page, 'Welcome');
-    await page.reload();
-    await expectFirstDeckWithImage(page);
-  });
-
-  // Regression: the open file belongs to one deck. Importing markdown or
-  // starting New must never let file autosave write the other deck into it.
-  test('importing another deck does not overwrite the previously saved file', async ({ page }) => {
-    await openEditor(page);
-    await uploadImage(page);
-    await saveAs(page, 'first.cuecard.json');
-
-    await loadOtherDeck(page);
-    // File autosave is debounced by 2s (FILE_WRITE_DELAY_MS); give it time to fire
-    await page.waitForTimeout(3000);
-    const saved = await fakeFile(page, 'first.cuecard.json');
-    expect(saved).not.toContain('E2E Other Deck');
-    expect(saved).toContain('Welcome');
-  });
-
-  test('starting a New presentation does not overwrite the previously saved file', async ({ page }) => {
-    await openEditor(page);
-    await uploadImage(page);
-    await saveAs(page, 'first.cuecard.json');
-
-    page.once('dialog', (d) => d.accept());
-    await page.getByRole('button', { name: 'New', exact: true }).click();
-    // A new deck has no slides (and therefore no canvas)
-    await expect(editorCanvas(page)).toHaveCount(0);
-    // File autosave is debounced by 2s (FILE_WRITE_DELAY_MS); give it time to fire
-    await page.waitForTimeout(3000);
-    const saved = await fakeFile(page, 'first.cuecard.json');
-    expect(saved).toContain('Welcome');
-    expect(saved).toContain('"assets"');
   });
 });

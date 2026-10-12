@@ -277,8 +277,8 @@ Click **Fonts** to browse and load Google Fonts.
 
 - **Import Markdown** parses `.md` files into slides with automatic layout inference
 - **Export** options include Markdown (lossless; see [Lossless Export Format](#lossless-export-format)) and HTML (self-contained offline file)
-- **Open** loads a `.cuecard.json` presentation file through the browser's ordinary file picker, which reaches any folder (including WSL paths on Windows). The opened file isn't linked for saving, so the next **Save** asks where to save.
-- **Save / Save As** write `.cuecard.json` files with the File System Access API; after the first save, Save and autosave write to that file silently. Chrome's save picker refuses some folders (e.g. `\\wsl.localhost`), so **Download** saves a copy through the browser's normal downloads instead.
+- **Open** loads a `.cuecard.json` presentation file through the browser's ordinary file picker, which reaches any folder (including WSL paths on Windows).
+- **Save** (Ctrl+S) downloads the deck as a `.cuecard.json` file. Turn on Chrome's "Ask where to save each file before downloading" (Settings → Downloads) to choose the folder each time. Work in progress is also kept automatically in the browser.
 
 ## Tech Stack
 

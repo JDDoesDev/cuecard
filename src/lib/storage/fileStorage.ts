@@ -1,9 +1,12 @@
 /**
- * File System persistence for presentations.
+ * File persistence for presentations (`.cuecard.json`).
  *
- * Open always uses an ordinary file input (it reaches every folder). Save uses
- * the File System Access API when available (Chromium browsers), else a
- * download; Download saves a copy through the browser's downloads.
+ * Both directions use the browser's ordinary file routes, not the File System
+ * Access API: Chrome's pickers refuse some folders as "containing system
+ * files" (e.g. \\wsl.localhost paths on Windows). Open uses a file input;
+ * Save downloads the file, and Chrome asks where to save it when "Ask where to
+ * save each file" is on. Decks aren't linked to files, so every Save writes a
+ * new download; work in progress is kept by the localStorage autosave.
  */
 
 import type { Presentation } from '@/types/presentation';
@@ -18,120 +21,12 @@ import {
 import { collectImageCacheKeys, resolveImageReferences } from '@/lib/media/imageRestore';
 
 // ============================================================================
-// File Handle State
-// ============================================================================
-
-let currentFileHandle: FileSystemFileHandle | null = null;
-// Id of the presentation the open file belongs to. Writes for any other deck
-// (after Import, New, etc.) must never land in this file.
-let currentFilePresentationId: string | null = null;
-
-export function getFileHandle(): FileSystemFileHandle | null {
-  return currentFileHandle;
-}
-
-export function setFileHandle(handle: FileSystemFileHandle | null, presentationId: string | null = null) {
-  if (handle !== currentFileHandle) resetFileCaches();
-  currentFileHandle = handle;
-  currentFilePresentationId = handle ? presentationId : null;
-}
-
-/** True when the open file belongs to this presentation. */
-export function isFileForPresentation(presentation: Presentation): boolean {
-  return currentFileHandle !== null && currentFilePresentationId === presentation.id;
-}
-
-export function getFileName(): string | null {
-  return currentFileHandle?.name ?? null;
-}
-
-/**
- * Check if the File System Access API is available.
- */
-export function hasFileSystemAccess(): boolean {
-  return typeof window !== 'undefined' && 'showSaveFilePicker' in window;
-}
-
-// ============================================================================
 // Save
 // ============================================================================
 
-const FILE_OPTIONS = {
-  types: [
-    {
-      description: 'Cuecard Presentation',
-      accept: { 'application/json': ['.cuecard.json', '.json'] },
-    },
-  ],
-};
-
-/**
- * Save As starts next to the linked deck file; otherwise Chrome opens the
- * folder it last used.
- */
-function startIn(): FileSystemFileHandle | undefined {
-  return currentFileHandle ?? undefined;
-}
-
-/**
- * Save presentation to a file. If a file handle exists, writes to it silently.
- * Otherwise opens a save dialog (File System Access API) or triggers a download.
- */
-export async function saveToFile(
-  presentation: Presentation,
-  forceNewFile = false
-): Promise<{ success: boolean; fileName?: string }> {
+/** Save the deck as a `.cuecard.json` download. Returns the file name. */
+export async function saveToFile(presentation: Presentation): Promise<string> {
   const json = await serializePresentationFile(presentation);
-
-  // Try writing to existing file handle first
-  if (!forceNewFile && currentFileHandle && isFileForPresentation(presentation)) {
-    try {
-      const writable = await currentFileHandle.createWritable();
-      await writable.write(json);
-      await writable.close();
-      lastWrittenSignature = contentSignature(presentation);
-      return { success: true, fileName: currentFileHandle.name };
-    } catch {
-      // Permission revoked or file moved — fall through to picker
-      setFileHandle(null);
-    }
-  }
-
-  // File System Access API
-  if (hasFileSystemAccess()) {
-    try {
-      const handle = await window.showSaveFilePicker({
-        suggestedName: sanitizeFileName(presentation.title) + '.cuecard.json',
-        ...FILE_OPTIONS,
-        startIn: startIn(),
-      });
-      const writable = await handle.createWritable();
-      await writable.write(json);
-      await writable.close();
-      setFileHandle(handle, presentation.id);
-      lastWrittenSignature = contentSignature(presentation);
-      return { success: true, fileName: handle.name };
-    } catch (e: any) {
-      if (e?.name === 'AbortError') return { success: false }; // User cancelled
-      throw e;
-    }
-  }
-
-  // Fallback: download
-  return { success: true, fileName: triggerDownload(presentation, json) };
-}
-
-/**
- * Save a copy through the browser's normal download route instead of the
- * File System Access picker. Works for folders the picker refuses (e.g.
- * \\wsl.localhost paths); Chrome asks for a location when "Ask where to save
- * each file" is on. The copy is not linked to the deck, so it isn't autosaved.
- */
-export async function downloadCopy(presentation: Presentation): Promise<string> {
-  return triggerDownload(presentation, await serializePresentationFile(presentation));
-}
-
-function triggerDownload(presentation: Presentation, json: string): string {
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -143,48 +38,11 @@ function triggerDownload(presentation: Presentation, json: string): string {
   return a.download;
 }
 
-/**
- * Write to current file handle silently (for auto-save).
- * Returns false if no handle or write failed.
- */
-export async function writeToCurrentFile(presentation: Presentation): Promise<boolean> {
-  if (!currentFileHandle) return false;
-  if (!isFileForPresentation(presentation)) {
-    // A different deck is loaded: detach from the file instead of overwriting it
-    setFileHandle(null);
-    return false;
-  }
-
-  // Skip writes when nothing persistable changed (e.g. only session cachedUrls
-  // were regenerated after opening the file).
-  const signature = contentSignature(presentation);
-  if (signature === lastWrittenSignature) return true;
-
-  try {
-    const json = await serializePresentationFile(presentation);
-    const writable = await currentFileHandle.createWritable();
-    await writable.write(json);
-    await writable.close();
-    lastWrittenSignature = signature;
-    return true;
-  } catch {
-    // Handle was revoked or file removed
-    setFileHandle(null);
-    return false;
-  }
-}
-
 // ============================================================================
 // Open
 // ============================================================================
 
-/**
- * Open a presentation file through the browser's ordinary file input. Unlike
- * the File System Access picker it can reach every folder (Chrome's picker
- * refuses some, e.g. \\wsl.localhost paths), on Windows and macOS alike. It
- * gives no writable handle, so the deck isn't linked to the file: the next
- * Save asks where to save, and Download saves a copy anywhere.
- */
+/** Open a presentation file through the browser's ordinary file input. */
 export function openFromFile(): Promise<{
   success: boolean;
   presentation?: Presentation;
@@ -208,9 +66,6 @@ export function openFromFile(): Promise<{
       }
       try {
         const presentation = await parsePresentationFile(await file.text());
-        // No writable handle: drop any stale one so auto-save
-        // doesn't write this presentation into the previously opened file.
-        setFileHandle(null);
         resolve({ success: true, presentation, fileName: file.name });
       } catch (e) {
         reject(e);
@@ -248,22 +103,9 @@ export class PresentationFileError extends Error {
 }
 
 // Content-addressed keys are immutable, so data URIs can be memoized
-// (avoids re-encoding every image on each auto-save). Bounded to the keys of
-// the last built file and cleared when the active file changes.
+// (avoids re-encoding every image on each save). Bounded to the keys of the
+// last built file.
 const dataUriCache = new Map<string, string>();
-
-/** Signature of the last content written to / read from the active file. */
-let lastWrittenSignature: string | null = null;
-
-function resetFileCaches() {
-  dataUriCache.clear();
-  lastWrittenSignature = null;
-}
-
-/** Serialization of persistable content (ignores session-only cachedUrl). */
-export function contentSignature(presentation: Presentation): string {
-  return JSON.stringify(presentation, (key, value) => (key === 'cachedUrl' ? undefined : value));
-}
 
 /** Builds the file JSON with image blobs embedded as data URIs. */
 export async function buildPresentationFile(presentation: Presentation): Promise<PresentationFile> {

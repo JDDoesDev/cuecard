@@ -72,10 +72,9 @@ Slide containers (both `<Slide>` component and editor canvas `.slideCanvas`) use
 - Autosave to localStorage (`src/lib/storage/autosave.ts`)
 - IndexedDB via `idb-keyval` for media blobs
 - File import/export for markdown files
-- Deck files (`.cuecard.json`, `src/lib/storage/fileStorage.ts`):
-  - **Open** always uses an ordinary `<input type=file>` — Chrome's File System Access pickers refuse some folders ("contains system files", e.g. `\\wsl.localhost` paths on Windows). Opened files get no writable handle, so the next Save asks where to save.
-  - **Save / Save As** use `showSaveFilePicker` (no forced `startIn`/`id`, so Chrome opens the last-used folder); after that, Save and file autosave write silently to the handle. A handle only ever receives the deck it was saved with (`isFileForPresentation`).
-  - **Download** saves a copy through the browser's normal downloads (works where the save picker is refused); not linked to the deck.
+- Deck files (`.cuecard.json`, `src/lib/storage/fileStorage.ts`) deliberately avoid the File System Access API — Chrome's pickers refuse some folders ("contains system files", e.g. `\\wsl.localhost` paths on Windows):
+  - **Open** uses an ordinary `<input type=file>`.
+  - **Save** (Ctrl+S) downloads the file (`<a download>`); Chrome asks for the folder when "Ask where to save each file" is on. Decks are never linked to a file, so there is no autosave to disk — localStorage autosave keeps work in progress.
   - Must work in Chrome on Windows (incl. WSL paths) and macOS.
 
 ## Key Files
@@ -92,12 +91,12 @@ Slide containers (both `<Slide>` component and editor canvas `.slideCanvas`) use
 | Rich text engine | `src/lib/editor/` (tiptapSchema, slideToTiptap/tiptapToSlide, editorCommands, pasteCleanup) |
 | Security | `src/lib/security/` (sanitize, inlineStyle allowlist) — all user HTML goes through these |
 | Code blocks | `src/lib/code/` (languages, oneDarkTheme, fitCode) |
-| Deck files | `src/lib/storage/fileStorage.ts` (open/save/download, embedded assets) |
+| Deck files | `src/lib/storage/fileStorage.ts` (open/save, embedded image assets) |
 | Themes | `src/styles/themes/` (default.css, dark.css, etc.) |
 
 ## Testing
 
-Tests live alongside source in `__tests__/` directories. Vitest with jsdom environment. ~710 unit tests across parser, serializer (incl. lossless round-trip), store, editor, export, media, hooks, and themes. Playwright browser tests in `e2e/` (`pnpm test:e2e`, ~42 tests).
+Tests live alongside source in `__tests__/` directories. Vitest with jsdom environment. ~705 unit tests across parser, serializer (incl. lossless round-trip), store, editor, export, media, hooks, and themes. Playwright browser tests in `e2e/` (`pnpm test:e2e`, ~39 tests).
 
 Zustand persist warnings in test output are expected (no localStorage in test env).
 

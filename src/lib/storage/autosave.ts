@@ -8,13 +8,11 @@
  *   read-only and live-update when the editor saves.
  * - Write failures (e.g. QuotaExceededError) are reported via a status handler
  *   instead of silently stopping autosave.
- * - Also writes to the filesystem when a file handle is active.
  */
 
 import type { PersistOptions, PersistStorage, StorageValue } from 'zustand/middleware';
 import { CURRENT_SCHEMA_VERSION, type Presentation } from '@/types/presentation';
 import type { PresentationState } from '@/store/presentationStore';
-import { writeToCurrentFile, getFileHandle } from './fileStorage';
 import { migrateLegacyTextContent } from '@/lib/editor/legacyTextContent';
 import { normalizeNestedListItems } from '@/lib/migration/migrateSlide';
 
@@ -22,7 +20,6 @@ export const AUTOSAVE_KEY = 'cuecard-presentation';
 export const AUTOSAVE_VERSION = 2;
 
 const WRITE_DELAY_MS = 500;
-const FILE_WRITE_DELAY_MS = 2000;
 const EDITOR_CHANNEL = 'cuecard-editor-presence';
 
 type PersistedState = { presentation: Presentation | null };
@@ -402,37 +399,4 @@ export function setupStorageSync(store: SyncableStore, hooks: SyncHooks = {}): v
       // BroadcastChannel unavailable — storage events still keep tabs in sync
     }
   }
-}
-
-// ============================================================================
-// File-system autosave
-// ============================================================================
-
-let fsWriteTimer: ReturnType<typeof setTimeout> | null = null;
-
-function scheduleFileWrite(presentation: Presentation) {
-  if (!getFileHandle()) return;
-  if (fsWriteTimer) clearTimeout(fsWriteTimer);
-  fsWriteTimer = setTimeout(() => {
-    writeToCurrentFile(presentation).catch((err) =>
-      console.warn('Auto-save to file failed:', err)
-    );
-  }, FILE_WRITE_DELAY_MS);
-}
-
-/**
- * Subscribe to store changes and auto-save to filesystem (debounced).
- * Only writes when the presentation itself changes — not on slide navigation.
- * Call this once after store creation.
- */
-export function setupFileAutoSave(store: {
-  getState: () => PresentationState;
-  subscribe: (listener: (state: PresentationState, prevState: PresentationState) => void) => () => void;
-}) {
-  return store.subscribe((state, prevState) => {
-    if (!isEditorWindow()) return;
-    if (state.presentation && state.presentation !== prevState.presentation) {
-      scheduleFileWrite(state.presentation);
-    }
-  });
 }

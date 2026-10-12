@@ -3,7 +3,7 @@ import { parsePresentation } from '@/lib/parser/parsePresentation';
 import { presentationStore } from '@/store/presentationStore';
 import { Slide } from '@/components/Slide/Slide';
 import type { Presentation } from '@/types/presentation';
-import { formatValidationError, setFileHandle } from '@/lib/storage/fileStorage';
+import { formatValidationError } from '@/lib/storage/fileStorage';
 import { compressForSlide } from '@/lib/media/imageCompression';
 import { cacheImageBlob, getCachedImage, pinImageKeys, unpinImageKeys } from '@/lib/media/imageCaching';
 import { resolveImageReferences, findUnresolvedImageRefs, collectImageCacheKeys } from '@/lib/media/imageRestore';
@@ -129,8 +129,6 @@ export function MarkdownImportDialog({ isOpen, onClose }: MarkdownImportDialogPr
   const handleImport = useCallback(() => {
     if (parsedPresentation) {
       const { setPresentation } = presentationStore.getState();
-      // The imported deck is not the open file's deck: stop autosaving to it
-      setFileHandle(null);
       setPresentation(parsedPresentation);
 
       // Reset state and close

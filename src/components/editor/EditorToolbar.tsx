@@ -5,7 +5,7 @@ import { presentationStore } from '@/store/presentationStore';
 import { useTheme } from '@/components/ThemeProvider/ThemeProvider';
 import { openDualScreen } from '@/hooks/usePresentationMode';
 import { ThemeOptions } from '@/components/theme/ThemeOptions';
-import { saveToFile, downloadCopy, openFromFile, getFileName, setFileHandle, formatValidationError } from '@/lib/storage/fileStorage';
+import { saveToFile, openFromFile, formatValidationError } from '@/lib/storage/fileStorage';
 import { createPresentation } from '@/types/presentation';
 import { LAYOUTS, type LayoutPreset } from '@/types/slide';
 import { getAvailableFonts } from '@/lib/fonts/availableFonts';
@@ -41,7 +41,6 @@ export function EditorToolbar({
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [showThemePanel, setShowThemePanel] = useState(false);
   const [showFontPanel, setShowFontPanel] = useState(false);
-  const [currentFileName, setCurrentFileName] = useState<string | null>(getFileName());
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
 
   // Get current slide for reset to layout functionality
@@ -88,29 +87,15 @@ export function EditorToolbar({
     };
   }, [undo, redo]);
 
-  const handleSaveToFile = useCallback(async (forceNew = false) => {
+  // Save downloads the deck; Chrome asks where to save it when "Ask where to
+  // save each file" is on. Only failures need a status message.
+  const handleSaveToFile = useCallback(async () => {
     if (!store.presentation) return;
     try {
-      const result = await saveToFile(store.presentation, forceNew);
-      if (result.success && result.fileName) {
-        setCurrentFileName(result.fileName);
-        setSaveStatus('Saved');
-        setTimeout(() => setSaveStatus(null), 2000);
-      }
+      await saveToFile(store.presentation);
     } catch (e) {
       console.error('Save failed:', e);
       setSaveStatus('Save failed');
-      setTimeout(() => setSaveStatus(null), 3000);
-    }
-  }, [store.presentation]);
-
-  const handleDownloadCopy = useCallback(async () => {
-    if (!store.presentation) return;
-    try {
-      await downloadCopy(store.presentation);
-    } catch (e) {
-      console.error('Download failed:', e);
-      setSaveStatus('Download failed');
       setTimeout(() => setSaveStatus(null), 3000);
     }
   }, [store.presentation]);
@@ -120,8 +105,6 @@ export function EditorToolbar({
       const result = await openFromFile();
       if (result.success && result.presentation) {
         store.setPresentation(result.presentation);
-        // Opened decks aren't linked to their file, so don't show it as the save target
-        setCurrentFileName(null);
       }
     } catch (e) {
       console.error('Open failed:', e);
@@ -134,7 +117,8 @@ export function EditorToolbar({
     const handleSaveShortcut = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        handleSaveToFile(false);
+        // Holding the keys must not start a download per key repeat
+        if (!e.repeat) handleSaveToFile();
       }
     };
     document.addEventListener('keydown', handleSaveShortcut);
@@ -200,9 +184,7 @@ export function EditorToolbar({
             className={styles.button}
             onClick={() => {
               if (window.confirm('Start a new presentation? Any unsaved changes will be lost.')) {
-                setFileHandle(null);
                 store.setPresentation(createPresentation());
-                setCurrentFileName(null);
               }
             }}
             title="New presentation"
@@ -212,24 +194,10 @@ export function EditorToolbar({
           <button className={styles.button} onClick={handleOpenFromFile} title="Open (JSON)">
             Open
           </button>
-          <button className={styles.button} onClick={() => handleSaveToFile(false)} title="Save (Ctrl+S)">
+          <button className={styles.button} onClick={handleSaveToFile} title="Save (Ctrl+S) — downloads a .cuecard.json file">
             Save
           </button>
-          <button className={styles.button} onClick={() => handleSaveToFile(true)} title="Save as new file">
-            Save As
-          </button>
-          <button
-            className={styles.button}
-            onClick={handleDownloadCopy}
-            title="Download a copy (JSON) through the browser's downloads, for folders Save can't reach"
-          >
-            Download
-          </button>
-          {(currentFileName || saveStatus) && (
-            <span className={styles.fileStatus}>
-              {saveStatus || currentFileName}
-            </span>
-          )}
+          {saveStatus && <span className={styles.fileStatus}>{saveStatus}</span>}
         </div>
 
         {/* Import/Export */}
