@@ -5,7 +5,7 @@ import { presentationStore } from '@/store/presentationStore';
 import { useTheme } from '@/components/ThemeProvider/ThemeProvider';
 import { openDualScreen } from '@/hooks/usePresentationMode';
 import { ThemeOptions } from '@/components/theme/ThemeOptions';
-import { saveToFile, openFromFile, getFileName, setFileHandle, formatValidationError } from '@/lib/storage/fileStorage';
+import { saveToFile, downloadCopy, openFromFile, getFileName, setFileHandle, formatValidationError } from '@/lib/storage/fileStorage';
 import { createPresentation } from '@/types/presentation';
 import { LAYOUTS, type LayoutPreset } from '@/types/slide';
 import { getAvailableFonts } from '@/lib/fonts/availableFonts';
@@ -100,6 +100,17 @@ export function EditorToolbar({
     } catch (e) {
       console.error('Save failed:', e);
       setSaveStatus('Save failed');
+      setTimeout(() => setSaveStatus(null), 3000);
+    }
+  }, [store.presentation]);
+
+  const handleDownloadCopy = useCallback(async () => {
+    if (!store.presentation) return;
+    try {
+      await downloadCopy(store.presentation);
+    } catch (e) {
+      console.error('Download failed:', e);
+      setSaveStatus('Download failed');
       setTimeout(() => setSaveStatus(null), 3000);
     }
   }, [store.presentation]);
@@ -205,6 +216,13 @@ export function EditorToolbar({
           </button>
           <button className={styles.button} onClick={() => handleSaveToFile(true)} title="Save as new file">
             Save As
+          </button>
+          <button
+            className={styles.button}
+            onClick={handleDownloadCopy}
+            title="Download a copy (JSON) through the browser's downloads, for folders Save can't reach"
+          >
+            Download
           </button>
           {(currentFileName || saveStatus) && (
             <span className={styles.fileStatus}>

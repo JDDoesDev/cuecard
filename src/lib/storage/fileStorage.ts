@@ -120,14 +120,29 @@ export async function saveToFile(
   }
 
   // Fallback: download
+  return { success: true, fileName: triggerDownload(presentation, json) };
+}
+
+/**
+ * Save a copy through the browser's normal download route instead of the
+ * File System Access picker. Works for folders the picker refuses (e.g.
+ * \\wsl.localhost paths); Chrome asks for a location when "Ask where to save
+ * each file" is on. The copy is not linked to the deck, so it isn't autosaved.
+ */
+export async function downloadCopy(presentation: Presentation): Promise<string> {
+  return triggerDownload(presentation, await serializePresentationFile(presentation));
+}
+
+function triggerDownload(presentation: Presentation, json: string): string {
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = sanitizeFileName(presentation.title) + '.cuecard.json';
   a.click();
-  URL.revokeObjectURL(url);
-  return { success: true, fileName: a.download };
+  // Revoke after the click has been handled so the download can start
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+  return a.download;
 }
 
 /**
