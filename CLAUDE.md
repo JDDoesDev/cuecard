@@ -27,9 +27,13 @@ Cuecard — presentation editor app: React 19 + Zustand + Vite + TypeScript. Thr
 `Slide[] → slideToMarkdown` (export)
 `Zustand store` is the single source of truth, with `zundo` for undo/redo.
 
+**Rendering performance**: `Slide`, `ElementRenderer` and the code view are `React.memo`'d. This relies on the store (immer) keeping unchanged slides/elements as the same objects — never mutate slide data outside the store or rebuild unchanged objects, or every slide (hidden `PrintView` + slide panel thumbnails) re-renders on each drag step. The code view only re-highlights when `code`, `language` or `highlightLines` change.
+
 ### Universal Element Model
 
 All slide layouts use `SlideElement[]` with percentage-based positioning (`x`, `y`, `w`, `h` as 0-100). Element types: `heading`, `text`, `list`, `code`, `image`, `video`, `rectangle`, `circle`, `line`, `html`. Layout types (`title`, `title-list`, `two-column`, `code-block`, `full-bleed-media`, `media-anywhere`, `freestyle`) are inferred from content but all render through `UniversalSlide` → `ElementRenderer`.
+
+Code elements shrink their text to fit the element box instead of scrolling (never growing past `--font-size-base`). `fitCodeToBox` in `src/lib/code/fitCode.ts` measures the `<pre>` and sets a `--code-scale` CSS var on the box, refitting on resize, code change and font load (`loadingdone`). Because everything scales in `cqw`, the scale is resolution-independent. The standalone HTML export runtime (`src/lib/export/exportRuntime.ts`) carries a minified copy of the same logic — keep the two in sync.
 
 The `html` element type embeds arbitrary HTML/CSS as a first-class slide element. It stores raw HTML in `htmlContent`, renders in a sandboxed iframe (`HtmlFrame.tsx`, no scripts) that receives the slide theme styles (font, color) and inlined fonts, and serializes as a raw mdast `html` node for markdown round-trip. The editor provides a live preview above a syntax-highlighted code editor (SyntaxHighlighter overlay on textarea).
 
@@ -68,6 +72,11 @@ Slide containers (both `<Slide>` component and editor canvas `.slideCanvas`) use
 - Autosave to localStorage (`src/lib/storage/autosave.ts`)
 - IndexedDB via `idb-keyval` for media blobs
 - File import/export for markdown files
+- Deck files (`.cuecard.json`, `src/lib/storage/fileStorage.ts`):
+  - **Open** always uses an ordinary `<input type=file>` — Chrome's File System Access pickers refuse some folders ("contains system files", e.g. `\\wsl.localhost` paths on Windows). Opened files get no writable handle, so the next Save asks where to save.
+  - **Save / Save As** use `showSaveFilePicker` (no forced `startIn`/`id`, so Chrome opens the last-used folder); after that, Save and file autosave write silently to the handle. A handle only ever receives the deck it was saved with (`isFileForPresentation`).
+  - **Download** saves a copy through the browser's normal downloads (works where the save picker is refused); not linked to the deck.
+  - Must work in Chrome on Windows (incl. WSL paths) and macOS.
 
 ## Key Files
 
@@ -82,11 +91,13 @@ Slide containers (both `<Slide>` component and editor canvas `.slideCanvas`) use
 | Editor | `src/components/editor/` (EditorLayout, SlidePanel, SlideEditor, InlineTextEditor, TextElementToolbar, EditorFormatToolbar bubble, EditorToolbar) |
 | Rich text engine | `src/lib/editor/` (tiptapSchema, slideToTiptap/tiptapToSlide, editorCommands, pasteCleanup) |
 | Security | `src/lib/security/` (sanitize, inlineStyle allowlist) — all user HTML goes through these |
+| Code blocks | `src/lib/code/` (languages, oneDarkTheme, fitCode) |
+| Deck files | `src/lib/storage/fileStorage.ts` (open/save/download, embedded assets) |
 | Themes | `src/styles/themes/` (default.css, dark.css, etc.) |
 
 ## Testing
 
-Tests live alongside source in `__tests__/` directories. Vitest with jsdom environment. ~685 unit tests across parser, serializer (incl. lossless round-trip), store, editor, export, media, hooks, and themes. Playwright browser tests in `e2e/` (`pnpm test:e2e`, ~40 tests).
+Tests live alongside source in `__tests__/` directories. Vitest with jsdom environment. ~710 unit tests across parser, serializer (incl. lossless round-trip), store, editor, export, media, hooks, and themes. Playwright browser tests in `e2e/` (`pnpm test:e2e`, ~42 tests).
 
 Zustand persist warnings in test output are expected (no localStorage in test env).
 
