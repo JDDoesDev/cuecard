@@ -8,6 +8,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#4f46e5" />
     <title>Cuecard</title>
+    <script>
+      // Apply the UI light/dark preference before first paint (see src/lib/theme/uiTheme.ts)
+      (function () {
+        var pref = 'system';
+        try { pref = localStorage.getItem('cuecard-ui-theme') || 'system'; } catch (e) {}
+        var dark = pref === 'dark' || (pref !== 'light' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.setAttribute('data-ui-theme', dark ? 'dark' : 'light');
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

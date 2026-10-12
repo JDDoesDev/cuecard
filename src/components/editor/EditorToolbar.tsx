@@ -5,6 +5,7 @@ import { presentationStore } from '@/store/presentationStore';
 import { useTheme } from '@/components/ThemeProvider/ThemeProvider';
 import { openDualScreen } from '@/hooks/usePresentationMode';
 import { ThemeOptions } from '@/components/theme/ThemeOptions';
+import type { UiThemePreference } from '@/lib/theme/uiTheme';
 import { saveToFile, openFromFile, formatValidationError } from '@/lib/storage/fileStorage';
 import { createPresentation } from '@/types/presentation';
 import { LAYOUTS, type LayoutPreset } from '@/types/slide';
@@ -15,6 +16,12 @@ import { ThemeSelector } from '@/components/theme/ThemeSelector';
 import { ThemeImportExport } from '@/components/theme/ThemeImportExport';
 import { FontBrowser } from '@/components/fonts/FontBrowser';
 import styles from './EditorToolbar.module.css';
+
+const UI_THEME_OPTIONS: { value: UiThemePreference; label: string; title: string }[] = [
+  { value: 'light', label: 'Light', title: 'Light editor UI' },
+  { value: 'dark', label: 'Dark', title: 'Dark editor UI' },
+  { value: 'system', label: 'System', title: 'Match the system light/dark setting' },
+];
 
 interface EditorToolbarProps {
   onToggleMode: () => void;
@@ -35,7 +42,7 @@ export function EditorToolbar({
   className = '',
 }: EditorToolbarProps) {
   const { undo, redo, canUndo, canRedo } = usePresentationUndo();
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, uiTheme, setUiTheme } = useTheme();
   const store = usePresentationStore();
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
@@ -303,6 +310,22 @@ export function EditorToolbar({
           <button className={styles.button} data-active={aspectRatio === '16:9'} onClick={() => onAspectRatioChange('16:9')}>16:9</button>
           <button className={styles.button} data-active={aspectRatio === '4:3'} onClick={() => onAspectRatioChange('4:3')}>4:3</button>
           <button className={styles.button} data-active={aspectRatio === '16:10'} onClick={() => onAspectRatioChange('16:10')}>16:10</button>
+        </div>
+
+        {/* Editor appearance (UI only, slides are unaffected) */}
+        <div className={styles.section} role="group" aria-label="Editor appearance">
+          {UI_THEME_OPTIONS.map(({ value, label, title }) => (
+            <button
+              key={value}
+              className={styles.button}
+              data-active={uiTheme === value}
+              aria-pressed={uiTheme === value}
+              onClick={() => setUiTheme(value)}
+              title={title}
+            >
+              {label}
+            </button>
+          ))}
         </div>
 
         {/* Present */}

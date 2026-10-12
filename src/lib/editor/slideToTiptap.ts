@@ -5,7 +5,8 @@ import {
   hasBlockHtml,
   applyAlignToBlocks,
 } from './textAlign';
-import { splitListItem } from './listItems';
+import { inlineContentToHtml, splitListItem } from './listItems';
+import { markdownToEditorHtml } from './markdownToHtml';
 import { normalizeLineHeight } from './blockFormat';
 
 /** ` style="text-align: …; line-height: …"` for a single-block element ('' when neither). */
@@ -53,27 +54,18 @@ export function elementToHTML(element: SlideElement): string {
   switch (element.type) {
     case 'heading':
       // Element-level line height is shown as the heading block's line height
-      return `<h${element.level}${blockStyleAttr(align, element.lineHeight)}>${element.content}</h${element.level}>`;
+      return `<h${element.level}${blockStyleAttr(align, element.lineHeight)}>${inlineContentToHtml(element.content)}</h${element.level}>`;
 
     case 'text': {
-      // If content already contains HTML block tags, pass through
-      if (hasBlockHtml(element.content)) {
-        if (!alignAttr || typeof DOMParser === 'undefined') return element.content;
-        const doc = new DOMParser().parseFromString(element.content, 'text/html');
-        applyAlignToBlocks(doc.body, align);
-        return doc.body.innerHTML;
-      }
-      // Markdown source: blank lines separate paragraphs; a single newline is a
-      // soft break (rendered as a space) unless the lines are markdown block
-      // structure (lists, tables, quotes, headings), which keep one line each.
-      const blockMarker = /^\s*(?:[-*+]\s|\d+[.)]\s|\||>|#)/;
-      const paragraphs = element.content.split(/\n{2,}/).flatMap((chunk) => {
-        const lines = chunk.split('\n');
-        return lines.some((l) => blockMarker.test(l)) ? lines : [lines.join(' ')];
-      });
-      return paragraphs
-        .map((line) => `<p${alignAttr}>${line || ''}</p>`)
-        .join('');
+      // Editor HTML passes through; markdown source (from import) is converted
+      // the way ElementRenderer renders it, so its formatting is kept
+      const html = hasBlockHtml(element.content)
+        ? element.content
+        : markdownToEditorHtml(element.content) || '<p></p>';
+      if (!alignAttr || typeof DOMParser === 'undefined') return html;
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      applyAlignToBlocks(doc.body, align);
+      return doc.body.innerHTML;
     }
 
     case 'list': {
@@ -87,7 +79,7 @@ export function elementToHTML(element: SlideElement): string {
         .map((item) => {
           // Separate the item's own text from its nested sub-lists
           const { text, nested } = splitListItem(item);
-          return `<li><p${itemAttr}>${text}</p>${nested}</li>`;
+          return `<li><p${itemAttr}>${inlineContentToHtml(text)}</p>${nested}</li>`;
         })
         .join('');
       return `<${tag}${startAttr}>${items}</${tag}>`;

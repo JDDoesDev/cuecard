@@ -71,8 +71,8 @@
 .error {
   margin-top: var(--space-md);
   padding: var(--space-sm);
-  background: #fee;
-  color: #c00;
+  background: var(--ui-error-bg, #fee);
+  color: var(--ui-error-text, #c00);
   border-radius: var(--radius-sm);
   font-size: var(--font-size-sm);
 }

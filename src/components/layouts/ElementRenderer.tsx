@@ -13,7 +13,7 @@ import { usePresentationMode } from '@/hooks/usePresentationMode';
 import { getVisibleItemCount } from '@/lib/fragments';
 import { scaleInlineFontSizes } from '@/lib/editor/fontSizeExtension';
 import { getElementTextAlign } from '@/lib/editor/textAlign';
-import { inlineMarkdownToHtml as listInlineMarkdownToHtml } from '@/lib/editor/listItems';
+import { inlineContentToHtml } from '@/lib/editor/listItems';
 import { SyntaxHighlighter, resolveCodeLanguage } from '@/lib/code/languages';
 import { oneDarkStyle, ONE_DARK, CODE_FONT_FAMILY } from '@/lib/code/oneDarkTheme';
 import { fitCodeToBox, CODE_SCALE_VAR } from '@/lib/code/fitCode';
@@ -131,15 +131,6 @@ function safeHtml(html: string): string {
   return withExternalLinkTargets(sanitizeHtml(scaleInlineFontSizes(html)));
 }
 
-/**
- * List item -> HTML. Items holding HTML (editor output, nested lists) pass
- * through; markdown items are converted with code spans kept literal, so text
- * like "Use `<ul>`" is not treated as markup.
- */
-function listItemHtml(item: string): string {
-  return /<[a-z][\s\S]*>/i.test(item.replace(/`[^`]*`/g, '')) ? item : listInlineMarkdownToHtml(item);
-}
-
 /** External links open in a new tab (stored content keeps plain `<a href>`). */
 export function withExternalLinkTargets(html: string): string {
   if (!/<a\b/i.test(html) || typeof document === 'undefined') return html;
@@ -237,34 +228,11 @@ interface ElementRendererProps {
   staticExport?: boolean;
 }
 
-/**
- * Convert markdown inline formatting to HTML.
- * Handles bold, italic, inline code, strikethrough, and links.
- * Passes through content that is already HTML.
- */
 /** Tiptap / legacy rich-text HTML: starts with a block-level tag. */
 export function isRichTextHtml(content: string): boolean {
   return /^\s*<(?:p|div|table|ul|ol|h[1-6]|blockquote|pre)\b/i.test(content);
 }
 
-function inlineMarkdownToHtml(text: string): string {
-  // If content already contains HTML tags, return as-is
-  if (/<[a-z][\s\S]*>/i.test(text)) return text;
-  let result = text;
-  // Bold+italic (must come before bold and italic)
-  result = result.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
-  // Bold
-  result = result.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  // Italic
-  result = result.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  // Strikethrough
-  result = result.replace(/~~(.+?)~~/g, '<del>$1</del>');
-  // Inline code
-  result = result.replace(/`([^`]+)`/g, '<code>$1</code>');
-  // Links
-  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
-  return result;
-}
 
 
 function ElementRendererComponent({ element, visibleFragment, staticExport }: ElementRendererProps) {
@@ -278,7 +246,7 @@ function ElementRendererComponent({ element, visibleFragment, staticExport }: El
         className: styles.heading,
         'data-level': element.level,
         style: Object.keys(headingStyle).length > 0 ? headingStyle : undefined,
-        dangerouslySetInnerHTML: { __html: safeHtml(inlineMarkdownToHtml(element.content)) },
+        dangerouslySetInnerHTML: { __html: safeHtml(inlineContentToHtml(element.content)) },
       };
       switch (element.level) {
         case 1: return <h1 {...headingProps} />;
@@ -349,7 +317,7 @@ function ElementRendererComponent({ element, visibleFragment, staticExport }: El
               <li
                 key={idx}
                 className={`${styles.listItem} ${styles.listItemFragment} ${itemVisible ? '' : styles.listItemHidden}`}
-                dangerouslySetInnerHTML={{ __html: safeHtml(listItemHtml(item)) }}
+                dangerouslySetInnerHTML={{ __html: safeHtml(inlineContentToHtml(item)) }}
               />
             );
           })}

@@ -127,6 +127,17 @@ export function normalizeListItem(item: string): string {
  * Inline markdown -> HTML as used for item content alongside nested lists
  * (by the importer) and for rendering markdown list items.
  */
+/**
+ * Inline content of a heading or list item -> HTML. Content holding HTML
+ * (editor output, nested lists) passes through; markdown (from import) is
+ * converted with code spans kept literal, so text like "Use `<ul>`" is not
+ * treated as markup. Shared by the renderer and the in-place editor so both
+ * show the same formatting.
+ */
+export function inlineContentToHtml(text: string): string {
+  return /<[a-z][\s\S]*>/i.test(text.replace(/`[^`]*`/g, '')) ? text : inlineMarkdownToHtml(text);
+}
+
 export function inlineMarkdownToHtml(text: string): string {
   // Code spans are literal: set them aside (escaped) so neither emphasis nor
   // markup such as `<ul>` inside them is interpreted

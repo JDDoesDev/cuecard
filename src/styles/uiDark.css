@@ -1,0 +1,45 @@
+/* ============================================================================
+   UI Dark Mode — editor chrome only
+   Scoped to :root, so it never reaches slides: every slide container sets its
+   own data-theme, which redefines these variables. Toggled by data-ui-theme
+   on <html> (src/lib/theme/uiTheme.ts).
+   ============================================================================ */
+
+:root[data-ui-theme='dark'] {
+  color-scheme: dark;
+
+  --color-bg-primary: #18181b;
+  --color-bg-secondary: #1f1f23;
+  --color-bg-tertiary: #2a2a2f;
+
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #d4d4d8;
+  --color-text-tertiary: #a1a1aa;
+
+  /* Mid indigo: readable both as text on dark and behind white text */
+  --color-accent: #6366f1;
+  --color-accent-hover: #4f46e5;
+  --color-accent-light: #272554;
+
+  --color-border: #34343a;
+  --color-border-light: #27272a;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.3), 0 4px 8px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 8px 16px rgba(0, 0, 0, 0.35), 0 16px 48px rgba(0, 0, 0, 0.5);
+
+  /* Status colors for banners and inline errors */
+  --ui-error-bg: #3b1518;
+  --ui-error-text: #fca5a5;
+  --ui-error-border: #7f1d1d;
+  --ui-warning-bg: #3a2e0b;
+  --ui-warning-text: #fde68a;
+  --ui-warning-border: #78590f;
+}
+
+/* Slides keep the default (light) color scheme so native controls and
+   embedded HTML frames render exactly as they do with the light UI. */
+:root[data-ui-theme='dark'] [data-slide-container] {
+  color-scheme: normal;
+}

@@ -52,7 +52,7 @@
 .error {
   padding: 0.5rem;
   font-size: 0.85rem;
-  color: #d32f2f;
-  background-color: #ffebee;
+  color: var(--ui-error-text, #d32f2f);
+  background-color: var(--ui-error-bg, #ffebee);
   border-radius: var(--radius-sm, 4px);
 }

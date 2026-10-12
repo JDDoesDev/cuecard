@@ -73,7 +73,39 @@ describe('slideToTiptap (element to HTML)', () => {
 
     const html = elementToHTML(element);
 
-    expect(html).toBe('<p>Line 1</p><p>Line 2 Line 3</p>');
+    // The newline stays inside the paragraph; the editor collapses it to a space
+    expect(html).toBe('<p>Line 1</p><p>Line 2\nLine 3</p>');
+  });
+
+  it('converts markdown formatting in imported text instead of showing it literally', () => {
+    const element: SlideElement = {
+      id: sid(), type: 'text',
+      position: { x: 10, y: 20, width: 80, height: 40 },
+      content: 'Plain hooks in `.module` raise *nothing* on **11.4.8**\n\n- one\n- two',
+    };
+
+    expect(elementToHTML(element)).toBe(
+      '<p>Plain hooks in <code>.module</code> raise <em>nothing</em> on <strong>11.4.8</strong></p>' +
+        '<ul><li>one</li><li>two</li></ul>'
+    );
+  });
+
+  it('converts markdown formatting in headings and list items', () => {
+    const heading: SlideElement = {
+      id: sid(), type: 'heading', level: 2,
+      position: { x: 10, y: 10, width: 80, height: 10 },
+      content: 'Use `<ul>` *now*',
+    };
+    const list: SlideElement = {
+      id: sid(), type: 'list',
+      position: { x: 10, y: 25, width: 80, height: 70 },
+      items: ['**Bold** item', 'Has `code`'], ordered: false,
+    };
+
+    expect(elementToHTML(heading)).toBe('<h2>Use <code>&lt;ul&gt;</code> <em>now</em></h2>');
+    expect(elementToHTML(list)).toBe(
+      '<ul><li><p><strong>Bold</strong> item</p></li><li><p>Has <code>code</code></p></li></ul>'
+    );
   });
 
   it('passes through HTML content in text elements', () => {

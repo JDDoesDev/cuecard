@@ -11,7 +11,7 @@ import {
 } from './blockFormat';
 
 /**
- * Editor commands for the rich-text toolbars (format toolbar, bubble menu,
+ * Editor commands for the rich-text toolbars (format controls, element toolbar,
  * contextual toolbar). Every command focuses the editor, runs as a single
  * transaction and returns whether it applied. Storage formats are documented
  * next to each feature (links.ts, tables.ts, fontFamily.ts, blockFormat.ts).

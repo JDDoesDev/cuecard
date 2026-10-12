@@ -1,41 +1,20 @@
 /* ============================================================================
-   EditorFormatToolbar — inline formatting bubble over a text selection
+   EditorFormatToolbar — inline formatting controls in the text element toolbar.
+   Popovers are position: fixed (placed from their button's rect) because the
+   bar scrolls horizontally and would clip absolute popovers.
    ============================================================================ */
 
 .toolbar {
   display: flex;
   align-items: center;
   gap: 1px;
-  padding: 3px 4px;
-  background: var(--bg-primary, #fff);
+  flex-shrink: 0;
   color: var(--text-primary, #18181b);
-  border: 1px solid var(--border, #e4e4e7);
-  border-radius: var(--radius-md, 6px);
-  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.18));
   font-family: var(--font-body);
   font-size: 13px;
   line-height: 1;
   letter-spacing: 0;
   white-space: nowrap;
-  position: relative;
-  animation: bubbleIn 120ms ease-out;
-}
-
-@keyframes bubbleIn {
-  from {
-    opacity: 0;
-    transform: translateY(3px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .toolbar {
-    animation: none;
-  }
 }
 
 .btn {
@@ -78,12 +57,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 4px;
-  min-width: 52px;
-  height: 26px;
+  min-width: 44px;
+  height: 28px;
   padding: 0 6px 0 8px;
   margin-right: 2px;
   border: 1px solid var(--border, #e4e4e7);
-  background: var(--bg-secondary, #fafafa);
+  background: var(--bg-primary, #fff);
   color: var(--text-primary, #18181b);
   font-size: 12px;
   font-family: inherit;
@@ -106,7 +85,7 @@
   width: 1px;
   height: 18px;
   background: var(--border, #e4e4e7);
-  margin: 0 3px;
+  margin: 0 2px;
   flex-shrink: 0;
 }
 
@@ -118,9 +97,8 @@
 .popover,
 .colorGrid,
 .linkPopover {
-  position: absolute;
-  top: calc(100% + 6px);
-  z-index: 1;
+  position: fixed;
+  z-index: 1000;
   background: var(--bg-primary, #fff);
   border: 1px solid var(--border, #e4e4e7);
   border-radius: var(--radius-md, 6px);
@@ -128,7 +106,6 @@
 }
 
 .popover {
-  left: 0;
   max-height: 240px;
   overflow-y: auto;
   min-width: 72px;
@@ -160,8 +137,6 @@
 }
 
 .colorGrid {
-  left: 50%;
-  transform: translateX(-50%);
   display: grid;
   grid-template-columns: repeat(6, 22px);
   gap: 4px;
@@ -200,13 +175,7 @@
   color: var(--text-primary, #18181b);
 }
 
-/* Link popover: anchored to the whole toolbar (its wrapper is static) */
-.linkWrap {
-  position: static;
-}
-
 .linkPopover {
-  left: 0;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -279,7 +248,7 @@
 
 /* Font family picker */
 .fontBtn {
-  width: 112px;
+  width: 90px;
   min-width: 0;
 }
 

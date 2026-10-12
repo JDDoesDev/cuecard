@@ -167,9 +167,9 @@ export function textElementToolbar(page: Page): Locator {
   return page.getByRole('toolbar', { name: 'Text element' });
 }
 
-/** Floating inline-format toolbar shown over a text selection. */
-export function bubbleToolbar(page: Page): Locator {
-  return page.getByRole('toolbar', { name: 'Text formatting' });
+/** Inline-format controls (font, size, marks, colors) inside the text element toolbar. */
+export function formatControls(page: Page): Locator {
+  return textElementToolbar(page).getByRole('group', { name: 'Text formatting' });
 }
 
 /** Double-click a canvas element to edit its text in place; waits for the editor to take focus. */

@@ -23,7 +23,8 @@ import { LinkIcon, CodeIcon, ClearFormatIcon } from './toolbarIcons';
 import styles from './EditorFormatToolbar.module.css';
 
 interface EditorFormatToolbarProps {
-  editor: Editor;
+  /** Null until the in-place editor has mounted (controls render disabled). */
+  editor: Editor | null;
   /** Slot: extra inline-format controls (engine features), rendered before "Clear formatting". */
   extras?: ReactNode;
   /** Slot: open an external link dialog instead of the built-in URL popover. */
@@ -66,28 +67,54 @@ export function useEditorTransactions(editor: Editor | null) {
   }, [editor]);
 }
 
+/** Fixed position below an anchor button (the bar scrolls horizontally, so popovers can't be absolute). */
+function popoverPosition(anchor: DOMRect, width: number, align: 'start' | 'center'): React.CSSProperties {
+  const ideal = align === 'center' ? anchor.left + anchor.width / 2 - width / 2 : anchor.left;
+  return { top: anchor.bottom + 6, left: Math.max(8, Math.min(ideal, window.innerWidth - width - 8)) };
+}
+
 /**
- * Inline formatting controls for the bubble toolbar shown over a text
- * selection while editing a text element in place.
+ * Inline formatting controls (font, size, marks, link, colors) for the text
+ * element toolbar while a text element is edited in place. They apply to the
+ * selection, or to what is typed next at the caret.
  */
-export function EditorFormatToolbar({ editor, extras, onRequestLink }: EditorFormatToolbarProps) {
+export function EditorFormatToolbar({ editor: maybeEditor, extras, onRequestLink }: EditorFormatToolbarProps) {
   const [open, setOpen] = useState<Popover>(null);
+  const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const [linkDraft, setLinkDraft] = useState('');
   const [linkError, setLinkError] = useState(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
-  useEditorTransactions(editor);
+  useEditorTransactions(maybeEditor);
 
-  // Close popovers on outside click
+  // Close popovers on outside click, and when the bar scrolls or the window resizes
+  // (fixed popovers would drift away from their button)
   useEffect(() => {
     if (!open) return;
     const handleClickOutside = (e: MouseEvent) => {
       if (toolbarRef.current && !toolbarRef.current.contains(e.target as Node)) setOpen(null);
     };
+    // scroll doesn't bubble: this fires for the bar itself, not a scrolling popover list
+    const close = () => setOpen(null);
+    const bar = toolbarRef.current?.closest('[role="toolbar"]');
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    bar?.addEventListener('scroll', close);
+    window.addEventListener('resize', close);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      bar?.removeEventListener('scroll', close);
+      window.removeEventListener('resize', close);
+    };
   }, [open]);
 
-  const toggle = (popover: Exclude<Popover, null>) => setOpen((cur) => (cur === popover ? null : popover));
+  const toggle = (popover: Exclude<Popover, null>, e: React.MouseEvent<HTMLElement>) => {
+    setAnchor(e.currentTarget.getBoundingClientRect());
+    setOpen((cur) => (cur === popover ? null : popover));
+  };
+
+  if (!maybeEditor || maybeEditor.isDestroyed) {
+    return <div className={styles.toolbar} role="group" aria-label="Text formatting" aria-disabled="true" />;
+  }
+  const editor = maybeEditor;
 
   const btn = (
     label: ReactNode,
@@ -118,7 +145,7 @@ export function EditorFormatToolbar({ editor, extras, onRequestLink }: EditorFor
   const currentFont = formats.fontFamily;
   const hasLink = !!formats.link;
 
-  const openLink = () => {
+  const openLink = (e: React.MouseEvent<HTMLElement>) => {
     if (onRequestLink) {
       setOpen(null);
       onRequestLink(editor);
@@ -126,7 +153,7 @@ export function EditorFormatToolbar({ editor, extras, onRequestLink }: EditorFor
     }
     setLinkDraft(formats.link?.href ?? '');
     setLinkError(false);
-    toggle('link');
+    toggle('link', e);
   };
 
   const applyLink = () => {
@@ -147,13 +174,8 @@ export function EditorFormatToolbar({ editor, extras, onRequestLink }: EditorFor
     <div
       ref={toolbarRef}
       className={styles.toolbar}
-      role="toolbar"
+      role="group"
       aria-label="Text formatting"
-      // Keep focus (and the text selection) in the editor while using the toolbar
-      onMouseDown={(e) => {
-        const target = e.target as HTMLElement;
-        if (!target.closest('input, select, textarea')) e.preventDefault();
-      }}
       onKeyDown={(e) => {
         if (e.key === 'Escape' && open) {
           e.stopPropagation();
@@ -167,7 +189,7 @@ export function EditorFormatToolbar({ editor, extras, onRequestLink }: EditorFor
         <button
           type="button"
           className={`${styles.sizeBtn} ${styles.fontBtn}`}
-          onClick={() => toggle('font')}
+          onClick={(e) => toggle('font', e)}
           aria-label="Font"
           aria-haspopup="menu"
           aria-expanded={open === 'font'}
@@ -178,7 +200,12 @@ export function EditorFormatToolbar({ editor, extras, onRequestLink }: EditorFor
           <span className={styles.caret} aria-hidden="true">▾</span>
         </button>
         {open === 'font' && (
-          <div className={`${styles.popover} ${styles.fontPopover}`} role="menu" aria-label="Font">
+          <div
+            className={`${styles.popover} ${styles.fontPopover}`}
+            style={anchor ? popoverPosition(anchor, 180, 'start') : undefined}
+            role="menu"
+            aria-label="Font"
+          >
             <button
               type="button"
               role="menuitem"
@@ -214,7 +241,7 @@ export function EditorFormatToolbar({ editor, extras, onRequestLink }: EditorFor
         <button
           type="button"
           className={styles.sizeBtn}
-          onClick={() => toggle('size')}
+          onClick={(e) => toggle('size', e)}
           aria-label="Font size"
           aria-haspopup="menu"
           aria-expanded={open === 'size'}
@@ -224,7 +251,12 @@ export function EditorFormatToolbar({ editor, extras, onRequestLink }: EditorFor
           <span className={styles.caret} aria-hidden="true">▾</span>
         </button>
         {open === 'size' && (
-          <div className={styles.popover} role="menu" aria-label="Font size">
+          <div
+            className={styles.popover}
+            style={anchor ? popoverPosition(anchor, 72, 'start') : undefined}
+            role="menu"
+            aria-label="Font size"
+          >
             <button
               type="button"
               role="menuitem"
@@ -263,7 +295,7 @@ export function EditorFormatToolbar({ editor, extras, onRequestLink }: EditorFor
       {btn(<CodeIcon />, () => toggleCode(editor), formats.code, 'Inline code', 'Ctrl+E')}
 
       {/* Link */}
-      <div className={`${styles.popoverWrap} ${styles.linkWrap}`}>
+      <div className={styles.popoverWrap}>
         <button
           type="button"
           className={`${styles.btn} ${hasLink ? styles.active : ''}`}
@@ -278,6 +310,7 @@ export function EditorFormatToolbar({ editor, extras, onRequestLink }: EditorFor
         {open === 'link' && (
           <form
             className={styles.linkPopover}
+            style={anchor ? popoverPosition(anchor, 320, 'start') : undefined}
             onSubmit={(e) => {
               e.preventDefault();
               applyLink();
@@ -336,7 +369,7 @@ export function EditorFormatToolbar({ editor, extras, onRequestLink }: EditorFor
         <button
           type="button"
           className={styles.btn}
-          onClick={() => toggle('color')}
+          onClick={(e) => toggle('color', e)}
           aria-label="Text color"
           aria-expanded={open === 'color'}
           title="Text color"
@@ -346,7 +379,12 @@ export function EditorFormatToolbar({ editor, extras, onRequestLink }: EditorFor
           </span>
         </button>
         {open === 'color' && (
-          <div className={styles.colorGrid} role="group" aria-label="Text color">
+          <div
+            className={styles.colorGrid}
+            style={anchor ? popoverPosition(anchor, 170, 'center') : undefined}
+            role="group"
+            aria-label="Text color"
+          >
             <button
               type="button"
               className={styles.colorSwatch}
@@ -381,7 +419,7 @@ export function EditorFormatToolbar({ editor, extras, onRequestLink }: EditorFor
         <button
           type="button"
           className={`${styles.btn} ${formats.highlight ? styles.active : ''}`}
-          onClick={() => toggle('highlight')}
+          onClick={(e) => toggle('highlight', e)}
           aria-label="Highlight"
           aria-expanded={open === 'highlight'}
           title="Highlight"
@@ -391,7 +429,12 @@ export function EditorFormatToolbar({ editor, extras, onRequestLink }: EditorFor
           </span>
         </button>
         {open === 'highlight' && (
-          <div className={styles.colorGrid} role="group" aria-label="Highlight color">
+          <div
+            className={styles.colorGrid}
+            style={anchor ? popoverPosition(anchor, 170, 'center') : undefined}
+            role="group"
+            aria-label="Highlight color"
+          >
             <button
               type="button"
               className={styles.colorSwatch}

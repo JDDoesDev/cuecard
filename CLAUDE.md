@@ -17,7 +17,7 @@ Package manager: **pnpm** (v10.28.0). Do not use npm or yarn.
 
 Cuecard — presentation editor app: React 19 + Zustand + Vite + TypeScript. Three modes:
 
-- **Edit mode** — WYSIWYG slide editor: text/heading/list elements are edited in place on the canvas (Tiptap, floating bubble toolbar + element toolbar), drag-and-drop reordering (dnd-kit), element positioning, speaker notes
+- **Edit mode** — WYSIWYG slide editor: text/heading/list elements are edited in place on the canvas (Tiptap; all text formatting lives in the element toolbar above the canvas), drag-and-drop reordering (dnd-kit), element positioning, speaker notes
 - **Presenter mode** — fullscreen presentation with speaker notes, timer, next-slide preview; keyboard/click navigation
 - **Audience mode** — synced read-only view receiving navigation state via BroadcastChannel + localStorage fallback
 
@@ -51,10 +51,13 @@ Elements have optional `fragment?: number` for incremental reveal during present
 
 - **Parser**: `remarkSlidePlugin.ts` parses HTML comment directives (`<!-- position: ... -->`, `<!-- fragment: N -->`, etc.) and attaches metadata to mdast nodes. `inferLayout.ts` converts parsed nodes into `SlideElement[]`.
 - **Serializer**: `slideToMarkdown.ts` converts `Slide[]` back to markdown with comment directives.
+- **Editing imported content**: imported text/heading/list content stays markdown until edited. `elementToHTML` (`slideToTiptap.ts`) must convert it to HTML the same way `ElementRenderer` renders it (`markdownToEditorHtml` for text, `inlineContentToHtml` for headings/list items) — otherwise markdown syntax becomes literal text on the first edit.
 
 ### Theming
 
 CSS custom properties defined in `src/styles/themes/`. 18 built-in themes plus custom themes (`custom-<slug>`, injected `<style>`). Variables scoped via `[data-theme]` attribute on `<html>`. Presentation-level fonts (`fontHeading`/`fontBody`) are scoped to slide containers via inline `--font-heading`/`--font-body` CSS vars — they don't leak to editor UI.
+
+Editor UI light/dark/system mode (`src/lib/theme/uiTheme.ts`, toolbar toggle) sets `data-ui-theme` on `<html>`; dark colors live in `src/styles/uiDark.css` under `:root[data-ui-theme='dark']`. Slides are unaffected because every slide container's `data-theme` redefines all color vars. `index.html` applies the stored preference before first paint — keep its inline script in sync with `uiTheme.ts`.
 
 ### Slide Content Scaling
 
@@ -87,7 +90,7 @@ Slide containers (both `<Slide>` component and editor canvas `.slideCanvas`) use
 | Serializer | `src/lib/serializer/slideToMarkdown.ts` |
 | Slide rendering | `src/components/layouts/UniversalSlide.tsx`, `src/components/layouts/ElementRenderer.tsx` |
 | Navigation | `src/hooks/useFragmentNav.ts`, `src/hooks/useKeyboardNav.ts` |
-| Editor | `src/components/editor/` (EditorLayout, SlidePanel, SlideEditor, InlineTextEditor, TextElementToolbar, EditorFormatToolbar bubble, EditorToolbar) |
+| Editor | `src/components/editor/` (EditorLayout, SlidePanel, SlideEditor, InlineTextEditor, TextElementToolbar, EditorFormatToolbar, EditorToolbar) |
 | Rich text engine | `src/lib/editor/` (tiptapSchema, slideToTiptap/tiptapToSlide, editorCommands, pasteCleanup) |
 | Security | `src/lib/security/` (sanitize, inlineStyle allowlist) — all user HTML goes through these |
 | Code blocks | `src/lib/code/` (languages, oneDarkTheme, fitCode) |

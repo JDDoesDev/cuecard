@@ -43,13 +43,3 @@
   color: currentColor;
   opacity: 0.4;
 }
-
-/* Bubble toolbar host: fixed layer above the canvas (never clipped by it) */
-.bubbleLayer {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 0;
-  height: 0;
-  z-index: 1000;
-}

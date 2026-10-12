@@ -5,6 +5,7 @@
 
 .toolbar {
   height: 42px;
+  gap: 4px;
   flex-wrap: nowrap;
   overflow-x: auto;
   overflow-y: hidden;
@@ -69,7 +70,7 @@
 .doneButton {
   margin-left: auto;
   height: 28px;
-  padding: 0 14px;
+  padding: 0 10px;
   border: 1px solid var(--accent);
   border-radius: var(--radius-sm, 4px);
   background: var(--accent);
@@ -87,7 +88,7 @@
 }
 
 .lineHeightSelect {
-  width: 84px;
+  width: 72px;
   margin-left: 2px;
 }
 

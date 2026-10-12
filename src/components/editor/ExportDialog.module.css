@@ -177,7 +177,7 @@
   padding: 10px 12px;
   font-size: 13px;
   border-radius: var(--radius-md, 6px);
-  background: #fef2f2;
-  color: #b91c1c;
-  border: 1px solid #fecaca;
+  background: var(--ui-error-bg, #fef2f2);
+  color: var(--ui-error-text, #b91c1c);
+  border: 1px solid var(--ui-error-border, #fecaca);
 }

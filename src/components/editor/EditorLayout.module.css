@@ -29,15 +29,15 @@
 }
 
 .bannerError {
-  background: #fdecea;
-  color: #8a1c13;
-  border-bottom: 1px solid #f5c2bd;
+  background: var(--ui-error-bg, #fdecea);
+  color: var(--ui-error-text, #8a1c13);
+  border-bottom: 1px solid var(--ui-error-border, #f5c2bd);
 }
 
 .bannerNotice {
-  background: #fff8e1;
-  color: #6b4e00;
-  border-bottom: 1px solid #f3e0a3;
+  background: var(--ui-warning-bg, #fff8e1);
+  color: var(--ui-warning-text, #6b4e00);
+  border-bottom: 1px solid var(--ui-warning-border, #f3e0a3);
 }
 
 .bannerDismiss {

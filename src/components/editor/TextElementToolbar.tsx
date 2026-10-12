@@ -20,7 +20,7 @@ import {
 } from '@/lib/editor/editorCommands';
 import type { TextAlignValue, TextLikeElement } from '@/lib/editor/textAlign';
 import { canOutdentListItem } from './inlineSurfaceExtension';
-import { useEditorTransactions } from './EditorFormatToolbar';
+import { EditorFormatToolbar, useEditorTransactions } from './EditorFormatToolbar';
 import {
   AlignLeftIcon,
   AlignCenterIcon,
@@ -211,7 +211,6 @@ export function TextElementToolbar({
       }}
     >
       <div className={barStyles.section}>
-        <span className={barStyles.label}>Editing</span>
         <select
           className={styles.typeSelect}
           value={textTypeValue(element)}
@@ -229,6 +228,10 @@ export function TextElementToolbar({
           <option value="list">List</option>
         </select>
       </div>
+
+      <div className={barStyles.separator} />
+
+      <EditorFormatToolbar editor={editor} />
 
       <div className={barStyles.separator} />
 

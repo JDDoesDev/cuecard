@@ -1,11 +1,9 @@
-import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from 'react';
+import { useEffect, useImperativeHandle, useRef, type Ref } from 'react';
 import { useEditor, EditorContent, type Editor } from '@tiptap/react';
-import { BubbleMenu } from '@tiptap/react/menus';
 import { getEditorExtensions } from '@/lib/editor/tiptapSchema';
 import { flushPendingSave } from '@/lib/storage/autosave';
 import type { TextLikeElement } from '@/lib/editor/textAlign';
 import { InlineSurface, REFRESH_META } from './inlineSurfaceExtension';
-import { EditorFormatToolbar } from './EditorFormatToolbar';
 import styles from './InlineTextEditor.module.css';
 
 /** Debounce for pushing editor HTML to the store (thumbnails/autosave follow). */
@@ -29,10 +27,6 @@ export interface InlineTextEditorProps {
   entry?: InlineEditEntry;
   /** Reports the Tiptap instance (null on unmount) for the contextual toolbar. */
   onEditorChange?: (editor: Editor | null) => void;
-  /** Slot: extra bubble toolbar items (e.g. engine-provided link/font controls). */
-  bubbleExtras?: (editor: Editor) => ReactNode;
-  /** Slot: replaces the built-in link popover (e.g. the engine's link dialog). */
-  onRequestLink?: (editor: Editor) => void;
   ref?: Ref<InlineTextEditorHandle>;
 }
 
@@ -53,8 +47,6 @@ export function InlineTextEditor({
   onUpdate,
   entry = 'end',
   onEditorChange,
-  bubbleExtras,
-  onRequestLink,
   ref,
 }: InlineTextEditorProps) {
   const updateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -78,18 +70,6 @@ export function InlineTextEditor({
   flushRef.current = flush;
 
   useImperativeHandle(ref, () => ({ flush: () => flushRef.current() }), []);
-
-  // Bubble toolbar layer: a fixed container in <body> so the canvas'
-  // overflow:hidden never clips it
-  const [bubbleLayer] = useState(() => {
-    const layer = document.createElement('div');
-    layer.className = styles.bubbleLayer;
-    return layer;
-  });
-  useEffect(() => {
-    document.body.appendChild(bubbleLayer);
-    return () => bubbleLayer.remove();
-  }, [bubbleLayer]);
 
   const editor = useEditor(
     {
@@ -213,17 +193,5 @@ export function InlineTextEditor({
 
   if (!editor) return null;
 
-  return (
-    <>
-      <EditorContent editor={editor} className={styles.host} />
-      <BubbleMenu
-        editor={editor}
-        appendTo={() => bubbleLayer}
-        options={{ strategy: 'fixed', placement: 'top', offset: 8, flip: { padding: 8 }, shift: { padding: 8 } }}
-        data-inline-editor-ui=""
-      >
-        <EditorFormatToolbar editor={editor} extras={bubbleExtras?.(editor)} onRequestLink={onRequestLink} />
-      </BubbleMenu>
-    </>
-  );
+  return <EditorContent editor={editor} className={styles.host} />;
 }

@@ -13,6 +13,7 @@ import {
   type CustomTheme,
 } from '../../lib/theme/customThemeStorage';
 import { BUILT_IN_THEMES } from '../../lib/theme/builtInThemes';
+import { useUiTheme, type UiThemePreference } from '../../lib/theme/uiTheme';
 import { collectPresentationFonts, ensureFontsLoaded } from '../../lib/fonts/presentationFonts';
 import { usePresentation } from '../../hooks/usePresentationStore';
 import { presentationStore } from '../../store/presentationStore';
@@ -51,6 +52,9 @@ interface ThemeContextValue {
   setTheme: (theme: Theme) => void;
   /** Custom themes keyed by name. */
   customThemes: Record<string, CustomTheme>;
+  /** Editor chrome light/dark preference (never affects slides). */
+  uiTheme: UiThemePreference;
+  setUiTheme: (preference: UiThemePreference) => void;
 }
 
 const THEME_MIGRATION_KEY = 'cuecard-theme-in-deck-migrated';
@@ -103,6 +107,7 @@ export function ThemeProvider({ children, defaultTheme = 'default' }: ThemeProvi
   const [localTheme, setLocalTheme] = useState<Theme>(defaultTheme);
   const [customThemes, setCustomThemes] = useState<Record<string, CustomTheme>>(() => getCustomThemes());
   const presentation = usePresentation();
+  const [uiTheme, setUiTheme] = useUiTheme();
 
   // Editor UI always gets 'default' on <html>; restore persisted selection
   useEffect(() => {
@@ -178,7 +183,10 @@ export function ThemeProvider({ children, defaultTheme = 'default' }: ThemeProvi
     writePresentationTheme(newTheme, true);
   }, []);
 
-  const value = useMemo(() => ({ theme, setTheme, customThemes }), [theme, setTheme, customThemes]);
+  const value = useMemo(
+    () => ({ theme, setTheme, customThemes, uiTheme, setUiTheme }),
+    [theme, setTheme, customThemes, uiTheme, setUiTheme],
+  );
 
   return (
     <ThemeContext.Provider value={value}>

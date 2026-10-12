@@ -10,15 +10,15 @@ import {
   editingElement,
   inlineEditor,
   textElementToolbar,
-  bubbleToolbar,
+  formatControls,
   startInlineEdit,
   exitInlineEdit,
 } from './support/app';
 
 /**
  * In-place text editing: heading/text/list elements are edited directly on the
- * slide canvas (no separate edit screen), with a bubble toolbar for inline
- * formatting and an element toolbar in the canvas' top bar.
+ * slide canvas (no separate edit screen), with all formatting (inline and
+ * element-level) in the element toolbar in the canvas' top bar.
  * The sample deck's slide 1 has a "Welcome" heading and a
  * "Markdown-First Presentations" text element; slide 2 a 4-item list.
  */
@@ -95,14 +95,14 @@ test.describe('in-place text editing', () => {
     expectSameBox(await editingItem.boundingBox(), itemBefore);
   });
 
-  test('bubble toolbar applies bold to the selection', async ({ page }) => {
+  test('format controls applies bold to the selection', async ({ page }) => {
     await openEditor(page);
     await startInlineEdit(page, canvasElement(page, 'Welcome'));
     await page.keyboard.press('ControlOrMeta+a');
 
-    const bubble = bubbleToolbar(page);
-    await expect(bubble).toBeVisible();
-    const bold = bubble.getByRole('button', { name: 'Bold' });
+    const controls = formatControls(page);
+    await expect(controls).toBeVisible();
+    const bold = controls.getByRole('button', { name: 'Bold' });
     await expect(bold).toHaveAttribute('title', 'Bold (Ctrl+B)');
     await bold.click();
     await expect(bold).toHaveAttribute('aria-pressed', 'true');
@@ -114,12 +114,12 @@ test.describe('in-place text editing', () => {
     await expect(canvasElement(page, 'Welcome').locator('h1 strong')).toHaveText('Welcome');
   });
 
-  test('bubble toolbar adds a link to the selection', async ({ page }) => {
+  test('format controls adds a link to the selection', async ({ page }) => {
     await openEditor(page);
     await startInlineEdit(page, canvasElement(page, SUBTITLE));
     await page.keyboard.press('ControlOrMeta+a');
-    await bubbleToolbar(page).getByRole('button', { name: 'Add link' }).click();
-    const url = bubbleToolbar(page).getByRole('textbox', { name: 'Link URL' });
+    await formatControls(page).getByRole('button', { name: 'Add link' }).click();
+    const url = formatControls(page).getByRole('textbox', { name: 'Link URL' });
     await expect(url).toBeFocused();
     await url.fill('example.com');
     await url.press('Enter');
@@ -127,14 +127,14 @@ test.describe('in-place text editing', () => {
 
     // Unsafe URLs are rejected with an error, nothing changes
     await page.keyboard.press('ControlOrMeta+a');
-    await bubbleToolbar(page).getByRole('button', { name: 'Edit link' }).click();
+    await formatControls(page).getByRole('button', { name: 'Edit link' }).click();
     await url.fill('javascript:alert(1)');
     await url.press('Enter');
-    await expect(bubbleToolbar(page).getByRole('alert')).toBeVisible();
+    await expect(formatControls(page).getByRole('alert')).toBeVisible();
     await expect(inlineEditor(page).locator('a[href="https://example.com"]')).toHaveCount(1);
 
     // Remove the link
-    await bubbleToolbar(page).getByRole('button', { name: 'Remove link' }).click();
+    await formatControls(page).getByRole('button', { name: 'Remove link' }).click();
     await expect(inlineEditor(page).locator('a')).toHaveCount(0);
     await expect(inlineEditor(page)).toHaveText(SUBTITLE);
 
@@ -142,12 +142,12 @@ test.describe('in-place text editing', () => {
     await expect(canvasElement(page, SUBTITLE).locator('a')).toHaveCount(0);
   });
 
-  test('bubble toolbar applies a font family', async ({ page }) => {
+  test('format controls applies a font family', async ({ page }) => {
     await openEditor(page);
     await startInlineEdit(page, canvasElement(page, SUBTITLE));
     await page.keyboard.press('ControlOrMeta+a');
-    await bubbleToolbar(page).getByRole('button', { name: 'Font', exact: true }).click();
-    await bubbleToolbar(page).getByRole('menuitem', { name: 'Lato' }).click();
+    await formatControls(page).getByRole('button', { name: 'Font', exact: true }).click();
+    await formatControls(page).getByRole('menuitem', { name: 'Lato' }).click();
     const span = inlineEditor(page).locator('span[style*="Lato"]');
     await expect(span).toHaveText(SUBTITLE);
     expect(await span.evaluate((el) => getComputedStyle(el).fontFamily)).toContain('Lato');
