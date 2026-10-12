@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { memo, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -159,7 +159,7 @@ export function withExternalLinkTargets(html: string): string {
  * Code block whose text shrinks to fit the element box instead of scrolling
  * (see fitCode.ts). Refits when the box resizes, the code changes, or fonts load.
  */
-function CodeView({ element }: { element: CodeElement }) {
+function CodeViewComponent({ element }: { element: CodeElement }) {
   const boxRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -217,6 +217,19 @@ function CodeView({ element }: { element: CodeElement }) {
   );
 }
 
+const sameLines = (a?: number[], b?: number[]) =>
+  a === b || (!!a && !!b && a.length === b.length && a.every((n, i) => n === b[i]));
+
+// Highlighting is the costly part of a slide render; only redo it when the code
+// itself changes, not when the element moves or resizes (fitting handles that).
+const CodeView = memo(
+  CodeViewComponent,
+  (prev, next) =>
+    prev.element.code === next.element.code &&
+    prev.element.language === next.element.language &&
+    sameLines(prev.element.highlightLines, next.element.highlightLines),
+);
+
 interface ElementRendererProps {
   element: SlideElement;
   visibleFragment?: number;
@@ -254,7 +267,7 @@ function inlineMarkdownToHtml(text: string): string {
 }
 
 
-export function ElementRenderer({ element, visibleFragment, staticExport }: ElementRendererProps) {
+function ElementRendererComponent({ element, visibleFragment, staticExport }: ElementRendererProps) {
   switch (element.type) {
     case 'heading': {
       const headingStyle: React.CSSProperties = {};
@@ -377,3 +390,6 @@ export function ElementRenderer({ element, visibleFragment, staticExport }: Elem
       return <ShapeRenderer element={element} />;
   }
 }
+
+/** Memoized: unchanged elements (same object from the store) skip re-rendering. */
+export const ElementRenderer = memo(ElementRendererComponent);

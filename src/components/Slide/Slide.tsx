@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { Slide as SlideType } from '@/types/slide';
 import { UniversalSlide } from '@/components/layouts/UniversalSlide';
 import { useTheme } from '@/components/ThemeProvider/ThemeProvider';
@@ -10,7 +11,7 @@ interface SlideProps {
   fontBody?: string;
 }
 
-export function Slide({ slide, visibleFragment, fontHeading, fontBody }: SlideProps) {
+function SlideComponent({ slide, visibleFragment, fontHeading, fontBody }: SlideProps) {
   const { theme } = useTheme();
 
   // Apply presentation-level font overrides as scoped CSS custom properties
@@ -28,3 +29,9 @@ export function Slide({ slide, visibleFragment, fontHeading, fontBody }: SlidePr
     </div>
   );
 }
+
+/**
+ * Memoized: the store keeps unchanged slides as the same objects, so the print
+ * view and slide panel only re-render the slide being edited.
+ */
+export const Slide = memo(SlideComponent);
