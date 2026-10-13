@@ -116,8 +116,9 @@ export function collapseBlockAlignment(blocks: HTMLElement[]): {
   uniform: boolean;
   align: Exclude<TextAlignValue, 'left'> | undefined;
 } {
-  // Tables have no alignment of their own: they never make alignment mixed
-  blocks = blocks.filter((b) => b.tagName !== 'TABLE');
+  // Tables and code blocks have no alignment of their own: they never make
+  // alignment mixed. Lists/quotes are aligned through the paragraphs inside them.
+  blocks = blocks.filter((b) => b.tagName !== 'TABLE' && b.tagName !== 'PRE').flatMap(alignableBlocks);
   if (blocks.length === 0) return { uniform: true, align: undefined };
   const aligns = blocks.map((b) => normalizeTextAlign(b.style.textAlign));
   const first = aligns[0];
@@ -146,10 +147,43 @@ export function textAlignUpdates(el: SlideElement, align: TextAlignValue): Parti
   return updates as Partial<SlideElement>;
 }
 
-/** Apply an element-level alignment to every top-level block in an HTML body. */
+const CONTAINER_TAGS = new Set(['UL', 'OL', 'BLOCKQUOTE']);
+
+/**
+ * The blocks that carry alignment for a top-level block: itself, or for a
+ * list/blockquote the paragraphs and headings inside it (the editor only aligns
+ * paragraphs and headings).
+ */
+function alignableBlocks(block: HTMLElement): HTMLElement[] {
+  if (!CONTAINER_TAGS.has(block.tagName)) return [block];
+  return Array.from(block.querySelectorAll<HTMLElement>('p, h1, h2, h3, h4, h5, h6'));
+}
+
+const BLOCK_TAG_RE = /^(?:P|UL|OL|BLOCKQUOTE|PRE|TABLE|H[1-6])$/;
+
+/** Wrap a list item's leading inline content in <p> (as the editor stores it) so it can be aligned. */
+function wrapListItemText(li: HTMLElement): void {
+  const inline: ChildNode[] = [];
+  for (const node of Array.from(li.childNodes)) {
+    if (node.nodeType === Node.ELEMENT_NODE && BLOCK_TAG_RE.test((node as Element).tagName)) break;
+    inline.push(node);
+  }
+  if (!inline.some((n) => n.nodeType === Node.ELEMENT_NODE || (n.textContent ?? '').trim() !== '')) return;
+  const p = li.ownerDocument.createElement('p');
+  li.insertBefore(p, inline[0]);
+  inline.forEach((n) => p.appendChild(n));
+}
+
+/**
+ * Apply an element-level alignment to every block in an HTML body: top-level
+ * blocks, and the paragraphs inside lists and blockquotes.
+ */
 export function applyAlignToBlocks(body: HTMLElement, align: string | undefined): void {
   if (!align) return;
+  body.querySelectorAll<HTMLElement>('li').forEach(wrapListItemText);
   for (const child of Array.from(body.children) as HTMLElement[]) {
-    if (!child.style.textAlign) setTextAlignStyle(child, align);
+    for (const block of alignableBlocks(child)) {
+      if (!block.style.textAlign) setTextAlignStyle(block, align);
+    }
   }
 }

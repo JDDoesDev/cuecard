@@ -471,3 +471,33 @@ describe('list and heading elements never drop content', () => {
     expect(tiptapToSlide('<p>a<br><br></p>', slideOf(text('')), 0).elements[0]).toMatchObject({ content: '<p>a<br><br></p>' });
   });
 });
+
+describe('editing imported markdown text', () => {
+  it('keeps inline formatting through an edit', () => {
+    const el = text('Plain hooks in `.module` raise *nothing*');
+    const saved = save(open(el), el);
+    expect(saved.content).toBe('<p>Plain hooks in <code>.module</code> raise <em>nothing</em></p>');
+  });
+
+  it('keeps element alignment when the text holds a list or quote', () => {
+    for (const content of ['Intro\n\n- a\n- b', '- a\n- b', 'Intro\n\n> quoted']) {
+      const el = text(content, { textAlign: 'center' });
+      const saved = save(open(el), el);
+      expect(saved.textAlign).toBe('center');
+      expect(saved.content).not.toMatch(/text-align/);
+    }
+  });
+
+  it('keeps mixed alignment inside a list as per-paragraph styles', () => {
+    const el = text('<p style="text-align: center">A</p><ul><li><p>b</p></li></ul>');
+    const saved = save(open(el), el);
+    expect(saved.textAlign).toBeUndefined();
+    expect(saved.content).toMatch(/<p style="text-align: center;?">A<\/p>/);
+  });
+
+  it('keeps an inline image as its markdown source instead of dropping it', () => {
+    const el = text('See ![chart](a.png) below');
+    const saved = save(open(el), el);
+    expect(saved.content).toBe('<p>See ![chart](a.png) below</p>');
+  });
+});

@@ -87,8 +87,8 @@ describe('slideToTiptap expands element alignment', () => {
   });
 
   it('markdown paragraphs', () => {
-    expect(elementToHTML(text('A\n\nB', { textAlign: 'right' }))).toBe(
-      '<p style="text-align: right">A</p><p style="text-align: right">B</p>'
+    expect(elementToHTML(text('A\n\nB', { textAlign: 'right' }))).toMatch(
+      /^<p style="text-align: right;?">A<\/p><p style="text-align: right;?">B<\/p>$/
     );
   });
 

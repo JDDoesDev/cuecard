@@ -148,7 +148,10 @@ describe('review regressions', () => {
   });
 
   it('elementToHTML keeps such items in one paragraph', () => {
-    expect(elementToHTML(list(['Use `<ul>` and `<p>` tags'], false))).toBe('<ul><li><p>Use `<ul>` and `<p>` tags</p></li></ul>');
+    // Markdown code spans become <code> with the tags escaped, never real lists/paragraphs
+    expect(elementToHTML(list(['Use `<ul>` and `<p>` tags'], false))).toBe(
+      '<ul><li><p>Use <code>&lt;ul&gt;</code> and <code>&lt;p&gt;</code> tags</p></li></ul>'
+    );
   });
 
   it('joins several paragraphs of a nested item with <br>', () => {
