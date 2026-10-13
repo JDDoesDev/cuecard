@@ -12,7 +12,7 @@
 .input {
   flex: 1;
   padding: 0.5rem;
-  border: 1px solid var(--border-color, #ccc);
+  border: 1px solid var(--border, #ccc);
   border-radius: var(--radius-sm, 4px);
   font-size: 0.9rem;
   font-family: inherit;
@@ -20,7 +20,7 @@
 
 .input:focus {
   outline: none;
-  border-color: var(--primary-color, #007bff);
+  border-color: var(--accent, #4f46e5);
 }
 
 .input:disabled {
@@ -30,7 +30,7 @@
 
 .button {
   padding: 0.5rem 1rem;
-  background-color: var(--primary-color, #007bff);
+  background-color: var(--accent, #4f46e5);
   color: white;
   border: none;
   border-radius: var(--radius-sm, 4px);
@@ -41,7 +41,7 @@
 }
 
 .button:hover:not(:disabled) {
-  background-color: var(--primary-color-hover, #0056b3);
+  background-color: var(--accent-hover, #4338ca);
 }
 
 .button:disabled {

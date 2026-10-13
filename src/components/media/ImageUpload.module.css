@@ -9,9 +9,9 @@
   align-items: center;
   justify-content: center;
   min-height: 120px;
-  border: 2px dashed var(--border-color, #ccc);
+  border: 2px dashed var(--border, #ccc);
   border-radius: var(--radius-md, 8px);
-  background-color: var(--background-secondary, #f9f9f9);
+  background-color: var(--bg-secondary, #f9f9f9);
   cursor: pointer;
   transition: all 0.2s ease;
   padding: 1rem;
@@ -19,8 +19,8 @@
 
 .dropZone:hover,
 .dropZone.dragging {
-  border-color: var(--primary-color, #007bff);
-  background-color: var(--background-tertiary, #e9f5ff);
+  border-color: var(--accent, #4f46e5);
+  background-color: var(--accent-light, #eef2ff);
 }
 
 .fileInput {
@@ -44,6 +44,6 @@
   font-size: 0.85rem;
   color: var(--text-secondary, #666);
   text-align: center;
-  background-color: var(--background-tertiary, #f0f0f0);
+  background-color: var(--bg-tertiary, #f0f0f0);
   border-radius: var(--radius-sm, 4px);
 }

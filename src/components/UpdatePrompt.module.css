@@ -3,8 +3,8 @@
   bottom: 20px;
   right: 20px;
   z-index: 9999;
-  background: var(--color-background);
-  color: var(--color-text);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
   border: 2px solid var(--color-accent);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
@@ -55,8 +55,8 @@
 
 .dismissButton {
   background: transparent;
-  color: var(--color-text);
-  border: 1px solid var(--color-text);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-text-primary);
 }
 
 .dismissButton:hover {
