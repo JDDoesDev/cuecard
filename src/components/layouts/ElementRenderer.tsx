@@ -180,6 +180,7 @@ function CodeViewComponent({ element }: { element: CodeElement }) {
         lineNumberStyle={{ color: ONE_DARK.lineNumber, fontStyle: 'normal' }}
         wrapLines={true}
         lineProps={(lineNumber) => {
+          // data-line: presenter spotlight target (codeSpotlight.ts)
           const style: React.CSSProperties = {};
           if (highlightLines.includes(lineNumber)) {
             style.backgroundColor = ONE_DARK.lineHighlight;
@@ -187,7 +188,7 @@ function CodeViewComponent({ element }: { element: CodeElement }) {
             style.paddingLeft = '0.5em';
             style.display = 'block';
           }
-          return { style };
+          return { style, 'data-line': lineNumber } as React.HTMLProps<HTMLElement>;
         }}
         customStyle={{
           margin: 0,

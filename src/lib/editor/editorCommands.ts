@@ -1,8 +1,10 @@
 import type { Editor } from '@tiptap/core';
+import { Selection } from '@tiptap/pm/state';
 import { applyEditorTextAlign } from './editorTextAlign';
 import { normalizeTextAlign, type TextAlignValue } from './textAlign';
 import { normalizeLinkHref } from './links';
 import { fontFamilyCss, fontFamilyName } from './fontFamily';
+import { renderedPxToNominal } from './fontSizeExtension';
 import {
   canIndentSelection,
   canOutdentSelection,
@@ -277,6 +279,8 @@ export interface ActiveFormats {
   fontFamily: string | null;
   /** Font size as px (e.g. '32px'), or null when inherited. */
   fontSize: string | null;
+  /** Size the selection renders at (nominal px), or null when mixed/unknown. */
+  renderedFontSize: string | null;
   /** Text color, or null when inherited. */
   color: string | null;
   /** Highlight color, or null when none. */
@@ -291,6 +295,37 @@ export interface ActiveFormats {
   tablesAvailable: boolean;
   canIndent: boolean;
   canOutdent: boolean;
+}
+
+/**
+ * Nominal px size the text renders at `pos`, or null outside a slide container.
+ * `side` picks the text after (1) or before (-1) the position at a boundary
+ * between differently sized text.
+ */
+function renderedFontSizeAt(editor: Editor, pos: number, side: 1 | -1): string | null {
+  const { node } = editor.view.domAtPos(pos, side);
+  const el = node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as Element);
+  const container = el?.closest('[data-slide-container]');
+  if (!el || !container || !container.clientWidth) return null;
+  const px = parseFloat(getComputedStyle(el).fontSize);
+  return Number.isFinite(px) ? renderedPxToNominal(px, container.clientWidth) : null;
+}
+
+/**
+ * Size the selection renders at, including inherited sizes (heading level,
+ * theme), so the toolbar can show it when no explicit size is set. Null when
+ * the selection starts and ends at different sizes.
+ */
+function getRenderedFontSize(editor: Editor): string | null {
+  const { doc, selection } = editor.state;
+  const { from, to, empty } = selection;
+  // Typed text takes the marks before the caret
+  if (empty) return renderedFontSizeAt(editor, from, -1);
+  // First/last text positions (select-all spans the blocks, outside any text)
+  const start = Selection.near(doc.resolve(from), 1).from;
+  const end = Selection.near(doc.resolve(to), -1).from;
+  const size = renderedFontSizeAt(editor, start, 1);
+  return size === renderedFontSizeAt(editor, end, -1) ? size : null;
 }
 
 /** Snapshot of the formatting at the selection, for rendering toolbar state. */
@@ -308,6 +343,7 @@ export function getActiveFormats(editor: Editor): ActiveFormats {
     link: getLinkAtSelection(editor),
     fontFamily: getFontFamily(editor),
     fontSize: (textStyle.fontSize as string | undefined) || null,
+    renderedFontSize: getRenderedFontSize(editor),
     color: (textStyle.color as string | undefined) || null,
     highlight: highlightActive ? ((editor.getAttributes('highlight').color as string | undefined) || 'yellow') : null,
     lineHeight: getLineHeight(editor),

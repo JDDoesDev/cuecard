@@ -5,6 +5,18 @@ export type ResizeDirection = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 /** Minimum element width/height in percent. */
 export const MIN_ELEMENT_SIZE = 5;
 
+/**
+ * How much of an element (percent of the slide) must stay on the slide.
+ * Elements may hang off the edges (the overhang is cropped when presenting),
+ * but never so far that they can't be grabbed again.
+ */
+export const MIN_ON_SLIDE = 5;
+
+/** Clamp an element's start (x or y) so at least MIN_ON_SLIDE of it stays on the slide. */
+export function clampToSlide(start: number, size: number): number {
+  return Math.max(MIN_ON_SLIDE - size, Math.min(100 - MIN_ON_SLIDE, start));
+}
+
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
@@ -12,9 +24,9 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
  * All values are in percentage coordinates (0-100).
  *
  * Only the edges being dragged move; the opposite edges stay anchored. Moving
- * edges are clamped to the slide (0–100) and to a minimum size, so dragging a
- * w/n handle past the minimum doesn't make the element "walk", and the element
- * can never be resized beyond the slide bounds.
+ * edges are clamped to a minimum size, so dragging a w/n handle past the
+ * minimum doesn't make the element "walk". Edges may go past the slide (to
+ * crop an image, say), but at least MIN_ON_SLIDE of the element stays on it.
  */
 export function calculateResize(
   direction: ResizeDirection,
@@ -32,10 +44,10 @@ export function calculateResize(
   const movesN = direction.includes('n');
   const movesS = direction.includes('s');
 
-  if (movesW) left = Math.max(0, Math.min(left + deltaXPercent, right - MIN_ELEMENT_SIZE));
-  if (movesE) right = Math.min(100, Math.max(right + deltaXPercent, left + MIN_ELEMENT_SIZE));
-  if (movesN) top = Math.max(0, Math.min(top + deltaYPercent, bottom - MIN_ELEMENT_SIZE));
-  if (movesS) bottom = Math.min(100, Math.max(bottom + deltaYPercent, top + MIN_ELEMENT_SIZE));
+  if (movesW) left = Math.min(left + deltaXPercent, right - MIN_ELEMENT_SIZE, 100 - MIN_ON_SLIDE);
+  if (movesE) right = Math.max(right + deltaXPercent, left + MIN_ELEMENT_SIZE, MIN_ON_SLIDE);
+  if (movesN) top = Math.min(top + deltaYPercent, bottom - MIN_ELEMENT_SIZE, 100 - MIN_ON_SLIDE);
+  if (movesS) bottom = Math.max(bottom + deltaYPercent, top + MIN_ELEMENT_SIZE, MIN_ON_SLIDE);
 
   // Round to 2 decimal places to prevent floating point drift
   return {

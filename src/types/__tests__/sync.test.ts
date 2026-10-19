@@ -27,4 +27,15 @@ describe('sync protocol', () => {
     expect(isSyncMessage({ type: 'bogus', timestamp: 1 })).toBe(false);
     expect(isSyncMessage(null)).toBe(false);
   });
+
+  it('validates spotlight messages', () => {
+    const spot = (spotlight: unknown) => ({ type: 'spotlight', slideIndex: 0, spotlight, timestamp: 1 });
+    expect(isSyncMessage(spot({ elementId: 'c1', line: 3 }))).toBe(true);
+    expect(isSyncMessage(spot(null))).toBe(true);
+    expect(isSyncMessage(spot({ elementId: 'c1', line: 0 }))).toBe(false);
+    expect(isSyncMessage(spot({ elementId: 'c1', line: 1.5 }))).toBe(false);
+    expect(isSyncMessage(spot({ line: 2 }))).toBe(false);
+    expect(isSyncMessage(spot(undefined))).toBe(false);
+    expect(isSyncMessage({ type: 'spotlight', spotlight: null, timestamp: 1 })).toBe(false);
+  });
 });

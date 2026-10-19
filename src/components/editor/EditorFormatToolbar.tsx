@@ -140,6 +140,10 @@ export function EditorFormatToolbar({ editor: maybeEditor, extras, onRequestLink
 
   const formats = getActiveFormats(editor);
   const currentFontSize = formats.fontSize ?? '';
+  // Show the size the text renders at (incl. heading level/theme sizes; blank
+  // when mixed). A caret prefers the explicit size, which may be a size picked
+  // for the next typed text that isn't rendered yet.
+  const shownFontSize = (editor.state.selection.empty && currentFontSize) || formats.renderedFontSize || '';
   const currentColor = formats.color ?? '';
   const currentHighlight = formats.highlight ?? '';
   const currentFont = formats.fontFamily;
@@ -247,7 +251,7 @@ export function EditorFormatToolbar({ editor: maybeEditor, extras, onRequestLink
           aria-expanded={open === 'size'}
           title="Font size"
         >
-          {currentFontSize ? parseInt(currentFontSize, 10) : 'Size'}
+          {shownFontSize ? parseInt(shownFontSize, 10) : 'Size'}
           <span className={styles.caret} aria-hidden="true">▾</span>
         </button>
         {open === 'size' && (

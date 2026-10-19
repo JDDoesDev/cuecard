@@ -176,6 +176,13 @@
   pointer-events: none; /* Read-only preview */
 }
 
+/* Revealed code blocks on the current slide take the mouse for the code line
+   spotlight (codeSpotlight.ts). Clicks still bubble up and advance the slide. */
+.currentSlide [data-element-type='code']:not([data-hidden]) {
+  pointer-events: auto;
+  user-select: none;
+}
+
 .slidePreviewContainer[data-aspect-ratio='16:9'] {
   aspect-ratio: 16 / 9;
 }

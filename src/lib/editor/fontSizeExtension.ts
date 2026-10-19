@@ -43,6 +43,14 @@ export function cqwToPx(size: string): string {
   return `${Math.round(px)}px`;
 }
 
+/**
+ * The nominal px size (what the size menu offers) of a rendered font size,
+ * e.g. 64px on an 800px-wide slide → '80px'.
+ */
+export function renderedPxToNominal(renderedPx: number, containerWidth: number): string {
+  return `${Math.round((renderedPx / containerWidth) * REFERENCE_WIDTH_PX)}px`;
+}
+
 export const FontSize = Extension.create({
   name: 'fontSize',
 

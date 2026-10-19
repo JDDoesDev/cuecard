@@ -4,6 +4,8 @@
  * All values are in percentage coordinates (0–100).
  */
 
+import { clampToSlide, MIN_ON_SLIDE } from './resizeUtils';
+
 export interface SnapRect {
   x: number;
   y: number;
@@ -106,8 +108,8 @@ export function computeSnap(
   let x = bestX ? bestX.snappedX : proposed.x;
   let y = bestY ? bestY.snappedY : proposed.y;
 
-  x = Math.max(0, Math.min(100 - size.width, x));
-  y = Math.max(0, Math.min(100 - size.height, y));
+  x = clampToSlide(x, size.width);
+  y = clampToSlide(y, size.height);
 
   const activeGuides: SnapLine[] = [];
   if (bestX) activeGuides.push({ axis: 'x', position: bestX.guide });
@@ -190,10 +192,11 @@ export function computeResizeSnap(
     }
   }
 
-  left = Math.max(0, left);
-  top = Math.max(0, top);
-  right = Math.min(100, right);
-  bottom = Math.min(100, bottom);
+  // Edges may hang off the slide, but keep MIN_ON_SLIDE of the element on it
+  left = Math.min(left, 100 - MIN_ON_SLIDE);
+  top = Math.min(top, 100 - MIN_ON_SLIDE);
+  right = Math.max(right, MIN_ON_SLIDE);
+  bottom = Math.max(bottom, MIN_ON_SLIDE);
 
   return {
     snappedRect: { x: left, y: top, width: right - left, height: bottom - top },

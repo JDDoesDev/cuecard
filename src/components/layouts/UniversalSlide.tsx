@@ -30,6 +30,8 @@ export function UniversalSlide({ slide, visibleFragment }: UniversalSlideProps) 
             key={element.id}
             className={`${styles.element} ${styles.fragmentReveal} ${visible ? '' : styles.hidden}`}
             data-element-type={element.type}
+            data-element-id={element.id}
+            data-hidden={visible ? undefined : ''}
             style={{
               left: `${element.position.x}%`,
               top: `${element.position.y}%`,

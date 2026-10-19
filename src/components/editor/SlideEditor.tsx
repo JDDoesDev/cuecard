@@ -29,7 +29,7 @@ import { AddElementToolbar } from './AddElementToolbar';
 import { GridOverlay } from './GridOverlay';
 import { ContextMenu } from './ContextMenu';
 import { computeSnap, computeResizeSnap, type SnapLine } from '@/lib/editor/snapGuides';
-import type { ResizeDirection } from '@/lib/editor/resizeUtils';
+import { clampToSlide, type ResizeDirection } from '@/lib/editor/resizeUtils';
 import { ElementRenderer } from '@/components/layouts/ElementRenderer';
 import { useElementSelection } from '@/hooks/useElementSelection';
 import type { SlideElement, ElementPosition } from '@/types/slide';
@@ -112,8 +112,9 @@ function convertTextElement(oldEl: TextLikeElement, newType: TextTypeValue, orde
 }
 
 /**
- * Clamp a move delta so the bounding box of `positions` stays on the slide.
- * Keeps the relative spacing of a multi-selection intact.
+ * Clamp a move delta so part of the bounding box of `positions` stays on the
+ * slide (it may hang off the edges). Keeps the relative spacing of a
+ * multi-selection intact.
  */
 function clampGroupDelta(positions: ElementPosition[], dx: number, dy: number) {
   if (positions.length === 0) return { dx: 0, dy: 0 };
@@ -122,20 +123,30 @@ function clampGroupDelta(positions: ElementPosition[], dx: number, dy: number) {
   const maxX = Math.max(...positions.map((p) => p.x + p.width));
   const maxY = Math.max(...positions.map((p) => p.y + p.height));
   return {
-    dx: Math.max(-minX, Math.min(100 - maxX, dx)),
-    dy: Math.max(-minY, Math.min(100 - maxY, dy)),
+    dx: clampToSlide(minX + dx, maxX - minX) - minX,
+    dy: clampToSlide(minY + dy, maxY - minY) - minY,
   };
 }
 
-/** Clone elements with new ids, offset so the copy is visible, kept on the slide. */
+/**
+ * Offset a pasted copy's x or y. Copies of elements that sit on the slide stay
+ * on it; copies of elements hanging off an edge keep their overhang.
+ */
+function pasteOffset(start: number, size: number): number {
+  const moved = start + PASTE_OFFSET;
+  if (start >= 0 && start + size <= 100) return Math.max(0, Math.min(moved, 100 - size));
+  return clampToSlide(moved, size);
+}
+
+/** Clone elements with new ids, offset so the copy is visible. */
 function cloneElementsWithOffset(elements: SlideElement[]): SlideElement[] {
   return elements.map((el) => {
     const copy = structuredClone(el);
     copy.id = crypto.randomUUID();
     copy.position = {
       ...copy.position,
-      x: Math.max(0, Math.min(copy.position.x + PASTE_OFFSET, 100 - copy.position.width)),
-      y: Math.max(0, Math.min(copy.position.y + PASTE_OFFSET, 100 - copy.position.height)),
+      x: pasteOffset(copy.position.x, copy.position.width),
+      y: pasteOffset(copy.position.y, copy.position.height),
     };
     return copy;
   });

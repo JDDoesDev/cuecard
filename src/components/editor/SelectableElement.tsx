@@ -1,7 +1,7 @@
 import { useRef, useState, useCallback } from 'react';
 import type { SlideElement } from '@/types/slide';
 import { ResizeHandles } from './ResizeHandles';
-import { calculateResize, type ResizeDirection } from '@/lib/editor/resizeUtils';
+import { calculateResize, clampToSlide, type ResizeDirection } from '@/lib/editor/resizeUtils';
 import styles from './SelectableElement.module.css';
 
 interface SelectableElementProps {
@@ -167,9 +167,9 @@ export function SelectableElement({
         let newX = dragStartRef.current.elementX + deltaXPercent;
         let newY = dragStartRef.current.elementY + deltaYPercent;
 
-        // Constrain to slide bounds
-        newX = Math.max(0, Math.min(100 - element.position.width, newX));
-        newY = Math.max(0, Math.min(100 - element.position.height, newY));
+        // Elements may hang off the slide, but keep part of them on it
+        newX = clampToSlide(newX, element.position.width);
+        newY = clampToSlide(newY, element.position.height);
 
         // Update position (with snap control via altKey)
         onPositionChange(

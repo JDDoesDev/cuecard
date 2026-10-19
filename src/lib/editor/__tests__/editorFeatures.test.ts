@@ -361,6 +361,7 @@ describe('getActiveFormats', () => {
       link: { href: 'https://x.com' },
       fontFamily: 'Lato',
       fontSize: '32px',
+      renderedFontSize: null, // not mounted in a slide container
       color: '#ff0000',
       highlight: null,
       lineHeight: 1.5,

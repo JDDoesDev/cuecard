@@ -25,7 +25,8 @@
   font-style: italic;
 }
 
-/* Wrapper constrains slideCanvas to fit available space */
+/* Wrapper constrains slideCanvas to fit available space. It clips elements
+   hanging off the slide, so they can't paint over the toolbars. */
 .slideCanvasWrapper {
   flex: 1;
   min-height: 0;
@@ -33,28 +34,43 @@
   align-items: center;
   justify-content: center;
   container-type: size;
+  overflow: hidden;
 }
 
-/* Slide canvas for element positioning */
+/* Slide canvas for element positioning. Elements may hang off the slide
+   (cropped when presenting); the gutter leaves room to see and grab the
+   overhang, which the ::after overlay fades. */
 .slideCanvas {
+  --canvas-gutter: 32px;
   position: relative;
-  width: min(100cqw, calc(100cqh * 16 / 9));
+  width: min(calc(100cqw - var(--canvas-gutter)), calc((100cqh - var(--canvas-gutter)) * 16 / 9));
   aspect-ratio: 16 / 9;
   background: var(--slide-bg, var(--color-bg-primary));
   border: 1px solid var(--border);
   border-radius: var(--radius-md, 6px);
-  overflow: hidden;
+  overflow: visible;
+  isolation: isolate; /* keep the overlay's z-index below toolbar menus */
   cursor: crosshair;
   box-shadow: var(--shadow-md);
 }
 
+.slideCanvas::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  box-shadow: 0 0 0 100vmax color-mix(in srgb, var(--bg-primary) 60%, transparent);
+  pointer-events: none;
+  z-index: 10000;
+}
+
 .slideCanvas[data-aspect='4:3'] {
-  width: min(100cqw, calc(100cqh * 4 / 3));
+  width: min(calc(100cqw - var(--canvas-gutter)), calc((100cqh - var(--canvas-gutter)) * 4 / 3));
   aspect-ratio: 4 / 3;
 }
 
 .slideCanvas[data-aspect='16:10'] {
-  width: min(100cqw, calc(100cqh * 16 / 10));
+  width: min(calc(100cqw - var(--canvas-gutter)), calc((100cqh - var(--canvas-gutter)) * 16 / 10));
   aspect-ratio: 16 / 10;
 }
 

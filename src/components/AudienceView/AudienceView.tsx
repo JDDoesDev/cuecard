@@ -1,8 +1,10 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { usePresentationStore } from '@/hooks/usePresentationStore';
 import { usePresentationSync } from '@/hooks/usePresentationSync';
 import { useKeyboardNav } from '@/hooks/useKeyboardNav';
 import { Slide } from '@/components/Slide/Slide';
+import { applyCodeSpotlight } from '@/lib/code/codeSpotlight';
+import type { CodeSpotlight } from '@/types/sync';
 import styles from './AudienceView.module.css';
 
 // ============================================================================
@@ -36,10 +38,17 @@ export function AudienceView({ aspectRatio = '16:9' }: AudienceViewProps) {
     }, 300);
   }, []);
 
+  // Code line the presenter is hovering, for the slide it was sent for
+  const [spotlight, setSpotlight] = useState<{ slideIndex: number; spotlight: CodeSpotlight } | null>(null);
+
   const handleNavigate = useCallback((slideIndex: number, fragIndex?: number) => {
     setCurrentSlide(slideIndex);
     setFragmentIndex(fragIndex ?? 0);
   }, [setCurrentSlide]);
+
+  const handleSpotlight = useCallback((slideIndex: number, next: CodeSpotlight | null) => {
+    setSpotlight(next ? { slideIndex, spotlight: next } : null);
+  }, []);
 
   // Listen for navigation and end messages from presenter. The hook re-runs
   // (restore + request-state handshake) once the presentation id is known.
@@ -47,10 +56,16 @@ export function AudienceView({ aspectRatio = '16:9' }: AudienceViewProps) {
     role: 'audience',
     presentationId: presentation?.id,
     onNavigate: handleNavigate,
+    onSpotlight: handleSpotlight,
     onEnd: closeAudienceWindow,
   });
 
   const currentSlide = presentation?.slides[currentSlideIndex];
+
+  const shownSpotlight = spotlight?.slideIndex === currentSlideIndex ? spotlight.spotlight : null;
+  useLayoutEffect(() => {
+    applyCodeSpotlight(containerRef.current, shownSpotlight);
+  }, [shownSpotlight, currentSlideIndex, fragmentIndex]);
 
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) {

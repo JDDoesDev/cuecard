@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateResize, MIN_ELEMENT_SIZE } from '../resizeUtils';
+import { calculateResize, clampToSlide, MIN_ELEMENT_SIZE, MIN_ON_SLIDE } from '../resizeUtils';
 import { computeResizeSnap, computeSnap } from '../snapGuides';
 
 const box = { x: 40, y: 40, width: 20, height: 20 };
@@ -9,19 +9,22 @@ describe('calculateResize', () => {
     expect(calculateResize('e', 10, 0, box)).toEqual({ x: 40, y: 40, width: 30, height: 20 });
   });
 
-  it('clamps the right edge to the slide', () => {
+  it('lets the right edge go past the slide', () => {
     const r = calculateResize('e', 80, 0, box);
-    expect(r.x + r.width).toBe(100);
+    expect(r).toEqual({ x: 40, y: 40, width: 100, height: 20 });
   });
 
-  it('clamps the bottom edge to the slide', () => {
-    const r = calculateResize('se', 0, 90, box);
-    expect(r.y + r.height).toBe(100);
-  });
-
-  it('clamps left/top edges at 0 without moving the opposite edge', () => {
+  it('lets left/top edges go past the slide without moving the opposite edge', () => {
     const r = calculateResize('nw', -80, -80, box);
-    expect(r).toEqual({ x: 0, y: 0, width: 60, height: 60 });
+    expect(r).toEqual({ x: -40, y: -40, width: 100, height: 100 });
+  });
+
+  it('keeps MIN_ON_SLIDE of the element on the slide', () => {
+    const offRight = { x: 90, y: 40, width: 30, height: 20 };
+    expect(calculateResize('w', 20, 0, offRight).x).toBe(100 - MIN_ON_SLIDE);
+    const offLeft = { x: -20, y: 40, width: 30, height: 20 };
+    const r = calculateResize('e', -20, 0, offLeft);
+    expect(r.x + r.width).toBe(MIN_ON_SLIDE);
   });
 
   it('w drag past the minimum width does not make the element walk', () => {
@@ -66,8 +69,16 @@ describe('computeResizeSnap', () => {
 });
 
 describe('computeSnap bounds', () => {
-  it('keeps the bottom edge on the slide', () => {
-    const { snappedPosition } = computeSnap({ x: 10, y: 95 }, { width: 10, height: 10 }, []);
-    expect(snappedPosition.y).toBe(90);
+  it('lets the element hang off the slide but keeps MIN_ON_SLIDE on it', () => {
+    const { snappedPosition } = computeSnap({ x: -30, y: 99 }, { width: 40, height: 10 }, [], 0);
+    expect(snappedPosition).toEqual({ x: -30, y: 100 - MIN_ON_SLIDE });
+  });
+});
+
+describe('clampToSlide', () => {
+  it('allows overhang up to all but MIN_ON_SLIDE', () => {
+    expect(clampToSlide(-50, 40)).toBe(MIN_ON_SLIDE - 40);
+    expect(clampToSlide(120, 40)).toBe(100 - MIN_ON_SLIDE);
+    expect(clampToSlide(-10, 40)).toBe(-10);
   });
 });

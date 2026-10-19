@@ -4,7 +4,9 @@ import {
   SYNC_CHANNEL_NAME,
   SYNC_STORAGE_KEY,
   SYNC_REQUEST_STORAGE_KEY,
+  SYNC_SPOTLIGHT_STORAGE_KEY,
   SYNC_STALE_MS,
+  type CodeSpotlight,
   isSyncMessage,
   shouldAcceptSyncMessage,
 } from '@/types/sync';
@@ -19,6 +21,7 @@ import {
 //   becomes known); the presenter replies with 'resync' carrying current state.
 //   This keeps late-joining / reloaded audience windows in sync without the
 //   presenter re-broadcasting periodically.
+// - Presenter broadcasts 'spotlight' when the hovered code line changes.
 // - Every message carries presentationId + timestamp. Receivers ignore
 //   messages for other presentations and messages older than the last one
 //   applied. Persisted state in localStorage is only restored when it belongs
@@ -33,6 +36,8 @@ export interface UsePresentationSyncOptions {
   role: 'presenter' | 'audience';
   onNavigate?: (slideIndex: number, fragmentIndex?: number) => void;
   onEnd?: () => void;
+  /** Audience only: the presenter's hovered code line changed (null clears it). */
+  onSpotlight?: (slideIndex: number, spotlight: CodeSpotlight | null) => void;
   presentationId?: string;
   /** Presenter only: returns current state, used to answer audience 'request-state'. */
   getState?: () => PresenterSyncState;
@@ -60,7 +65,9 @@ function parseMessage(raw: string | null): SyncMessage | null {
 function messageKey(message: SyncMessage): string {
   const nav = message.type === 'navigate' || message.type === 'resync'
     ? `:${message.slideIndex}:${message.fragmentIndex ?? ''}`
-    : '';
+    : message.type === 'spotlight'
+      ? `:${message.slideIndex}:${message.spotlight?.elementId ?? ''}:${message.spotlight?.line ?? ''}`
+      : '';
   return `${message.type}:${message.presentationId ?? ''}:${message.timestamp}${nav}`;
 }
 
@@ -71,6 +78,7 @@ export function usePresentationSync(options: UsePresentationSyncOptions) {
   // Refs avoid stale closures and keep the returned callbacks stable
   const onNavigateRef = useRef(options.onNavigate);
   const onEndRef = useRef(options.onEnd);
+  const onSpotlightRef = useRef(options.onSpotlight);
   const getStateRef = useRef(options.getState);
   const channelRef = useRef<BroadcastChannel | null>(null);
   const presentationIdRef = useRef(presentationId);
@@ -80,6 +88,7 @@ export function usePresentationSync(options: UsePresentationSyncOptions) {
 
   onNavigateRef.current = options.onNavigate;
   onEndRef.current = options.onEnd;
+  onSpotlightRef.current = options.onSpotlight;
   getStateRef.current = options.getState;
   presentationIdRef.current = presentationId;
 
@@ -103,6 +112,13 @@ export function usePresentationSync(options: UsePresentationSyncOptions) {
     send(
       { type: 'navigate', slideIndex, fragmentIndex, timestamp: Date.now(), presentationId: presentationIdRef.current },
       SYNC_STORAGE_KEY,
+    );
+  }, [send]);
+
+  const broadcastSpotlight = useCallback((slideIndex: number, spotlight: CodeSpotlight | null) => {
+    send(
+      { type: 'spotlight', slideIndex, spotlight, timestamp: Date.now(), presentationId: presentationIdRef.current },
+      SYNC_SPOTLIGHT_STORAGE_KEY,
     );
   }, [send]);
 
@@ -134,6 +150,8 @@ export function usePresentationSync(options: UsePresentationSyncOptions) {
 
       if (message.type === 'navigate' || message.type === 'resync') {
         onNavigateRef.current?.(message.slideIndex, message.fragmentIndex);
+      } else if (message.type === 'spotlight') {
+        onSpotlightRef.current?.(message.slideIndex, message.spotlight);
       } else if (message.type === 'end') {
         onEndRef.current?.();
       }
@@ -149,9 +167,9 @@ export function usePresentationSync(options: UsePresentationSyncOptions) {
     setIsConnected(true);
 
     // localStorage fallback (always set up, even if BroadcastChannel exists)
-    const listenKey = role === 'audience' ? SYNC_STORAGE_KEY : SYNC_REQUEST_STORAGE_KEY;
+    const listenKeys = role === 'audience' ? [SYNC_STORAGE_KEY, SYNC_SPOTLIGHT_STORAGE_KEY] : [SYNC_REQUEST_STORAGE_KEY];
     const handleStorageEvent = (event: StorageEvent) => {
-      if (event.key !== listenKey) return;
+      if (!event.key || !listenKeys.includes(event.key)) return;
       const message = parseMessage(event.newValue);
       if (message) handleMessage(message);
     };
@@ -184,6 +202,7 @@ export function usePresentationSync(options: UsePresentationSyncOptions) {
     isConnected,
     broadcastNavigate,
     broadcastResync,
+    broadcastSpotlight,
     broadcastEnd,
   };
 }

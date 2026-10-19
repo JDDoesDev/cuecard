@@ -159,10 +159,15 @@ function SortableSlideItemComponent({
             viewBox="0 0 16 16"
             fill="none"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
             xmlns="http://www.w3.org/2000/svg"
           >
-            <path d="M3 4h10M5 4V3h6v1M6 7v5M10 7v5M4 4v9a1 1 0 001 1h6a1 1 0 001-1V4" />
+            <path d="M2.5 4.5h11" />
+            <path d="M6 4.5V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5" />
+            <path d="M4 4.5l.7 8.6a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9l.7-8.6" />
+            <path d="M6.75 7v4.5M9.25 7v4.5" />
           </svg>
         </button>
       </div>

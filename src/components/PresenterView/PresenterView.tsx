@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { usePresentationStore } from '@/hooks/usePresentationStore';
 import { usePresentationSync } from '@/hooks/usePresentationSync';
 import { usePresenterTimer } from '@/hooks/usePresenterTimer';
@@ -6,6 +6,8 @@ import { useKeyboardNav } from '@/hooks/useKeyboardNav';
 import { useFragmentNav } from '@/hooks/useFragmentNav';
 import { openAudienceWindow } from '@/hooks/usePresentationMode';
 import { Slide } from '@/components/Slide/Slide';
+import { applyCodeSpotlight, sameSpotlight, spotlightAtPointer } from '@/lib/code/codeSpotlight';
+import type { CodeSpotlight } from '@/types/sync';
 import styles from './PresenterView.module.css';
 
 // ============================================================================
@@ -47,7 +49,7 @@ export function PresenterView({ aspectRatio = '16:9' }: PresenterViewProps) {
   stateRef.current = { slideIndex: currentSlideIndex, fragmentIndex: visibleFragment };
   const getState = useCallback(() => stateRef.current, []);
 
-  const { broadcastNavigate, broadcastResync, broadcastEnd } = usePresentationSync({
+  const { broadcastNavigate, broadcastResync, broadcastSpotlight, broadcastEnd } = usePresentationSync({
     role: 'presenter',
     presentationId: presentation?.id,
     getState,
@@ -62,6 +64,26 @@ export function PresenterView({ aspectRatio = '16:9' }: PresenterViewProps) {
     if (!presentationId) return;
     broadcastNavigate(currentSlideIndex, visibleFragment);
   }, [currentSlideIndex, visibleFragment, broadcastNavigate, presentationId]);
+
+  // Code line spotlight: the code line under the mouse on the current slide is
+  // highlighted here and on the audience screen; it clears when the mouse
+  // leaves the code block or the slide changes.
+  const [spotlight, setSpotlight] = useState<CodeSpotlight | null>(null);
+  const handleSpotlightMove = (e: React.MouseEvent) => {
+    const nextSpotlight = spotlightAtPointer(e.target, spotlight);
+    if (!sameSpotlight(nextSpotlight, spotlight)) setSpotlight(nextSpotlight);
+  };
+  useEffect(() => setSpotlight(null), [currentSlideIndex]);
+  useLayoutEffect(() => {
+    applyCodeSpotlight(currentSlideRef.current, spotlight);
+  }, [spotlight, currentSlideIndex]);
+  // Skip the initial null (nothing to clear yet); a slide change clears via setSpotlight
+  const spotlightSentRef = useRef(false);
+  useEffect(() => {
+    if (!spotlight && !spotlightSentRef.current) return;
+    spotlightSentRef.current = true;
+    broadcastSpotlight(stateRef.current.slideIndex, spotlight);
+  }, [spotlight, broadcastSpotlight]);
 
   const handleResync = () => {
     broadcastResync(currentSlideIndex, visibleFragment);
@@ -123,7 +145,12 @@ export function PresenterView({ aspectRatio = '16:9' }: PresenterViewProps) {
   return (
     <div className={styles.presenterGrid}>
       {/* Current Slide (large, top-left) */}
-      <div className={styles.currentSlide} ref={currentSlideRef}>
+      <div
+        className={styles.currentSlide}
+        ref={currentSlideRef}
+        onMouseMove={handleSpotlightMove}
+        onMouseLeave={() => setSpotlight(null)}
+      >
         <div className={styles.sectionLabel}>Current Slide</div>
         <div className={styles.slidePreviewContainer} data-aspect-ratio={aspectRatio}>
           <Slide slide={currentSlide} visibleFragment={visibleFragment} fontHeading={presentation?.fontHeading} fontBody={presentation?.fontBody} />
