@@ -13,12 +13,12 @@ import type { CodeSpotlight } from '@/types/sync';
 export const SPOTLIGHT_ATTR = 'data-spotlight';
 
 /**
- * The spotlight for the pointer over `target`. Outside a code block it is
- * null; between lines (the block's padding) the current line is kept.
+ * The spotlight for the pointer over `target`. Outside a (revealed) code
+ * block it is null; between lines (the block's padding) the current line is kept.
  */
 export function spotlightAtPointer(target: EventTarget | null, current: CodeSpotlight | null): CodeSpotlight | null {
   const el = target instanceof Element ? target : null;
-  const box = el?.closest<HTMLElement>('[data-element-type="code"][data-element-id]');
+  const box = el?.closest<HTMLElement>('[data-element-type="code"][data-element-id]:not([data-hidden])');
   const elementId = box?.dataset.elementId;
   if (!el || !box || !elementId) return null;
   const lineEl = el.closest<HTMLElement>('[data-line]');

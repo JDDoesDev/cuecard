@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePresentationStore } from '@/hooks/usePresentationStore';
 import { usePresentationSync } from '@/hooks/usePresentationSync';
 import { usePresenterTimer } from '@/hooks/usePresenterTimer';
@@ -6,8 +6,7 @@ import { useKeyboardNav } from '@/hooks/useKeyboardNav';
 import { useFragmentNav } from '@/hooks/useFragmentNav';
 import { openAudienceWindow } from '@/hooks/usePresentationMode';
 import { Slide } from '@/components/Slide/Slide';
-import { applyCodeSpotlight, sameSpotlight, spotlightAtPointer } from '@/lib/code/codeSpotlight';
-import type { CodeSpotlight } from '@/types/sync';
+import { useCodeSpotlight } from '@/hooks/useCodeSpotlight';
 import styles from './PresenterView.module.css';
 
 // ============================================================================
@@ -65,19 +64,9 @@ export function PresenterView({ aspectRatio = '16:9' }: PresenterViewProps) {
     broadcastNavigate(currentSlideIndex, visibleFragment);
   }, [currentSlideIndex, visibleFragment, broadcastNavigate, presentationId]);
 
-  // Code line spotlight: the code line under the mouse on the current slide is
-  // highlighted here and on the audience screen; it clears when the mouse
-  // leaves the code block or the slide changes.
-  const [spotlight, setSpotlight] = useState<CodeSpotlight | null>(null);
-  const handleSpotlightMove = (e: React.MouseEvent) => {
-    const nextSpotlight = spotlightAtPointer(e.target, spotlight);
-    if (!sameSpotlight(nextSpotlight, spotlight)) setSpotlight(nextSpotlight);
-  };
-  useEffect(() => setSpotlight(null), [currentSlideIndex]);
-  useLayoutEffect(() => {
-    applyCodeSpotlight(currentSlideRef.current, spotlight);
-  }, [spotlight, currentSlideIndex]);
-  // Skip the initial null (nothing to clear yet); a slide change clears via setSpotlight
+  // Code line spotlight on the current slide, mirrored on the audience screen
+  const { spotlight, handlers: spotlightHandlers } = useCodeSpotlight(currentSlideRef, currentSlideIndex);
+  // Skip the initial null (nothing to clear yet); a slide change clears the spotlight
   const spotlightSentRef = useRef(false);
   useEffect(() => {
     if (!spotlight && !spotlightSentRef.current) return;
@@ -148,8 +137,7 @@ export function PresenterView({ aspectRatio = '16:9' }: PresenterViewProps) {
       <div
         className={styles.currentSlide}
         ref={currentSlideRef}
-        onMouseMove={handleSpotlightMove}
-        onMouseLeave={() => setSpotlight(null)}
+        {...spotlightHandlers}
       >
         <div className={styles.sectionLabel}>Current Slide</div>
         <div className={styles.slidePreviewContainer} data-aspect-ratio={aspectRatio}>

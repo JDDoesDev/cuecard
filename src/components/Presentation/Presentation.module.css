@@ -129,3 +129,9 @@
   color: var(--text-secondary);
   font-size: 1.5rem;
 }
+
+/* Code blocks are hovered for the code line spotlight (codeSpotlight.ts);
+   no text selection, so clicking them still advances the slide. */
+.slideContainer [data-element-type='code'] {
+  user-select: none;
+}

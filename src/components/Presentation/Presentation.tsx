@@ -5,6 +5,7 @@ import { usePresentationStore } from '@/hooks/usePresentationStore';
 import { useKeyboardNav } from '@/hooks/useKeyboardNav';
 import { useFragmentNav } from '@/hooks/useFragmentNav';
 import { useFullscreen } from '@/hooks/useFullscreen';
+import { useCodeSpotlight } from '@/hooks/useCodeSpotlight';
 import styles from './Presentation.module.css';
 
 // ============================================================================
@@ -41,6 +42,9 @@ export function Presentation({ aspectRatio = '16:9' }: PresentationProps) {
   const { isFullscreen, toggleFullscreen, exitFullscreen } =
     useFullscreen(containerRef);
 
+  // Hovering a code line highlights it (no audience window to sync in single-screen mode)
+  const { handlers: spotlightHandlers } = useCodeSpotlight(containerRef, currentSlideIndex);
+
   // Keyboard + click navigation
   useKeyboardNav({
     onNext: nextSlide,
@@ -63,6 +67,7 @@ export function Presentation({ aspectRatio = '16:9' }: PresentationProps) {
       ref={containerRef}
       className={styles.presentation}
       data-aspect={aspectRatio}
+      {...spotlightHandlers}
     >
       <div className={styles.slideContainer}>
         <div

@@ -46,6 +46,11 @@ describe('spotlightAtPointer', () => {
     expect(spotlightAtPointer(document.querySelector('h2'), current)).toBeNull();
     expect(spotlightAtPointer(null, current)).toBeNull();
   });
+
+  it('ignores a not-yet-revealed (fragment) code block', () => {
+    document.querySelector('[data-element-type="code"]')!.setAttribute('data-hidden', '');
+    expect(spotlightAtPointer(byId('tok2'), null)).toBeNull();
+  });
 });
 
 describe('applyCodeSpotlight', () => {
