@@ -31,8 +31,10 @@ import { ContextMenu } from './ContextMenu';
 import { computeSnap, computeResizeSnap, type SnapLine } from '@/lib/editor/snapGuides';
 import { clampToSlide, type ResizeDirection } from '@/lib/editor/resizeUtils';
 import { ElementRenderer } from '@/components/layouts/ElementRenderer';
+import { DEFAULT_STROKE } from '@/components/layouts/ShapeRenderer';
+import { ColorSwatchPicker } from './ColorSwatchPicker';
 import { useElementSelection } from '@/hooks/useElementSelection';
-import type { SlideElement, ElementPosition } from '@/types/slide';
+import { isShapeElement, type SlideElement, type ElementPosition } from '@/types/slide';
 import { getAvailableFonts } from '@/lib/fonts/availableFonts';
 import { useTheme } from '@/components/ThemeProvider/ThemeProvider';
 import { SyntaxHighlighter, CODE_LANGUAGES, codeLanguagePickerValue } from '@/lib/code/languages';
@@ -47,6 +49,13 @@ const NUDGE_STEP = 1; // percent
 const NUDGE_STEP_LARGE = 5; // percent (with Shift)
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+const STROKE_WIDTHS = [1, 2, 3, 4, 6, 8, 12, 16];
+
+/** Width choices, plus the current width if it isn't one (e.g. from markdown). */
+function strokeWidthOptions(current: number): number[] {
+  return STROKE_WIDTHS.includes(current) ? STROKE_WIDTHS : [...STROKE_WIDTHS, current].sort((a, b) => a - b);
+}
 
 /** Fresh slide from the store (avoids stale closures in long-lived handlers). */
 function getFreshSlide(slideIndex: number) {
@@ -866,173 +875,6 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
       );
     }
 
-    // Shape elements show properties panel
-    if (editingElement.type === 'rectangle') {
-      return (
-        <div className={`${styles.editorContainer} ${className}`}>
-          <div className={styles.editorHeader}>
-            <button
-              className={styles.backButton}
-              onClick={() => setEditingElementId(null)}
-            >
-              Back to canvas
-            </button>
-            <span className={styles.elementLabel}>{editingElement.type} Properties</span>
-          </div>
-          <div className={styles.propertiesPanel}>
-            <div className={styles.propertyGroup}>
-              <label>Fill Color</label>
-              <input
-                type="text"
-                value={editingElement.fill || ''}
-                onChange={(e) => {
-                  typeUpdate(editingElement.id, 'fill', { fill: e.target.value || undefined });
-                }}
-                placeholder="transparent"
-                className={styles.propertyInput}
-              />
-            </div>
-            <div className={styles.propertyGroup}>
-              <label>Stroke Color</label>
-              <input
-                type="text"
-                value={editingElement.stroke || ''}
-                onChange={(e) => {
-                  typeUpdate(editingElement.id, 'stroke', { stroke: e.target.value || undefined });
-                }}
-                placeholder="#333"
-                className={styles.propertyInput}
-              />
-            </div>
-            <div className={styles.propertyGroup}>
-              <label>Stroke Width</label>
-              <input
-                type="number"
-                value={editingElement.strokeWidth || ''}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  typeUpdate(editingElement.id, 'strokeWidth', { strokeWidth: isNaN(val) ? undefined : val });
-                }}
-                placeholder="2"
-                className={styles.propertyInput}
-              />
-            </div>
-            <div className={styles.propertyGroup}>
-              <label>Corner Radius</label>
-              <input
-                type="number"
-                value={editingElement.cornerRadius || ''}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  typeUpdate(editingElement.id, 'cornerRadius', { cornerRadius: isNaN(val) ? undefined : val });
-                }}
-                placeholder="0"
-                className={styles.propertyInput}
-              />
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    if (editingElement.type === 'circle') {
-      return (
-        <div className={`${styles.editorContainer} ${className}`}>
-          <div className={styles.editorHeader}>
-            <button
-              className={styles.backButton}
-              onClick={() => setEditingElementId(null)}
-            >
-              Back to canvas
-            </button>
-            <span className={styles.elementLabel}>{editingElement.type} Properties</span>
-          </div>
-          <div className={styles.propertiesPanel}>
-            <div className={styles.propertyGroup}>
-              <label>Fill Color</label>
-              <input
-                type="text"
-                value={editingElement.fill || ''}
-                onChange={(e) => {
-                  typeUpdate(editingElement.id, 'fill', { fill: e.target.value || undefined });
-                }}
-                placeholder="transparent"
-                className={styles.propertyInput}
-              />
-            </div>
-            <div className={styles.propertyGroup}>
-              <label>Stroke Color</label>
-              <input
-                type="text"
-                value={editingElement.stroke || ''}
-                onChange={(e) => {
-                  typeUpdate(editingElement.id, 'stroke', { stroke: e.target.value || undefined });
-                }}
-                placeholder="#333"
-                className={styles.propertyInput}
-              />
-            </div>
-            <div className={styles.propertyGroup}>
-              <label>Stroke Width</label>
-              <input
-                type="number"
-                value={editingElement.strokeWidth || ''}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  typeUpdate(editingElement.id, 'strokeWidth', { strokeWidth: isNaN(val) ? undefined : val });
-                }}
-                placeholder="2"
-                className={styles.propertyInput}
-              />
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    if (editingElement.type === 'line') {
-      return (
-        <div className={`${styles.editorContainer} ${className}`}>
-          <div className={styles.editorHeader}>
-            <button
-              className={styles.backButton}
-              onClick={() => setEditingElementId(null)}
-            >
-              Back to canvas
-            </button>
-            <span className={styles.elementLabel}>{editingElement.type} Properties</span>
-          </div>
-          <div className={styles.propertiesPanel}>
-            <div className={styles.propertyGroup}>
-              <label>Stroke Color</label>
-              <input
-                type="text"
-                value={editingElement.stroke || ''}
-                onChange={(e) => {
-                  typeUpdate(editingElement.id, 'stroke', { stroke: e.target.value || undefined });
-                }}
-                placeholder="#333"
-                className={styles.propertyInput}
-              />
-            </div>
-            <div className={styles.propertyGroup}>
-              <label>Stroke Width</label>
-              <input
-                type="number"
-                value={editingElement.strokeWidth || ''}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value);
-                  typeUpdate(editingElement.id, 'strokeWidth', { strokeWidth: isNaN(val) ? undefined : val });
-                }}
-                placeholder="2"
-                className={styles.propertyInput}
-              />
-            </div>
-          </div>
-        </div>
-      );
-    }
-
     return null;
   }
 
@@ -1094,14 +936,16 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
                 selection.select(id, shiftKey);
               }}
               onDoubleClick={(id, point) => {
-                // Text: caret where the user double-clicked; others open their panel
+                // Text: caret where the user double-clicked; code/media/HTML open
+                // their panel. Shapes are styled from the controls bar instead.
                 if (isTextLikeElement(element)) startEditing(id, point);
-                else setEditingElementId(id);
+                else if (!isShapeElement(element)) setEditingElementId(id);
               }}
               onContextMenu={handleContextMenu}
               onPositionChange={handlePositionChange}
               onResize={handleResize}
               onResizeStart={beginHistoryBatch}
+              onLineChange={(id, updates) => store.updateElement(slideIndex, id, updates)}
               onResizeEnd={handleResizeEnd}
               onDragStart={beginHistoryBatch}
               onDragEnd={() => {
@@ -1244,6 +1088,65 @@ export function SlideEditor({ slideIndex, aspectRatio = '16:9', className = '' }
                     <option value="middle">Middle</option>
                     <option value="bottom">Bottom</option>
                   </select>
+                  <span className={styles.controlDivider} />
+                </>
+              )}
+              {isShapeElement(selectedElement) && (
+                <>
+                  {selectedElement.type !== 'line' && (
+                    <>
+                      <label className={styles.fragmentLabel}>Fill:</label>
+                      <ColorSwatchPicker
+                        label="Fill color"
+                        noneLabel="No fill"
+                        value={selectedElement.fill}
+                        onChange={(fill) => store.updateElement(slideIndex, selectedId, { fill })}
+                      />
+                    </>
+                  )}
+                  <label className={styles.fragmentLabel}>
+                    {selectedElement.type === 'line' ? 'Color:' : 'Outline:'}
+                  </label>
+                  <ColorSwatchPicker
+                    label={selectedElement.type === 'line' ? 'Line color' : 'Outline color'}
+                    noneLabel={selectedElement.type === 'line' ? 'Default color' : 'No outline'}
+                    value={selectedElement.type === 'line' ? selectedElement.stroke : selectedElement.stroke ?? DEFAULT_STROKE}
+                    onChange={(color) =>
+                      store.updateElement(slideIndex, selectedId, {
+                        // Shapes without a stroke get the default one, so "none" is explicit
+                        stroke: color ?? (selectedElement.type === 'line' ? undefined : 'none'),
+                      })
+                    }
+                  />
+                  <label className={styles.fragmentLabel}>Width:</label>
+                  <select
+                    value={selectedElement.strokeWidth ?? 2}
+                    onChange={(e) => {
+                      store.updateElement(slideIndex, selectedId, { strokeWidth: parseFloat(e.target.value) });
+                    }}
+                    className={styles.fragmentInput}
+                    title={selectedElement.type === 'line' ? 'Line width' : 'Outline width'}
+                  >
+                    {strokeWidthOptions(selectedElement.strokeWidth ?? 2).map((w) => (
+                      <option key={w} value={w}>{w}px</option>
+                    ))}
+                  </select>
+                  {selectedElement.type === 'rectangle' && (
+                    <>
+                      <label className={styles.fragmentLabel}>Corners:</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={selectedElement.cornerRadius ?? 0}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          typeUpdate(selectedId, 'cornerRadius', { cornerRadius: val > 0 ? val : undefined });
+                        }}
+                        className={styles.fragmentInput}
+                        title="Corner radius (px)"
+                      />
+                    </>
+                  )}
                   <span className={styles.controlDivider} />
                 </>
               )}

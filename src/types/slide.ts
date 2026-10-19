@@ -120,12 +120,18 @@ export interface CircleElement {
   fragment?: number;
 }
 
+/**
+ * A straight line across its position box: from the top-left to the
+ * bottom-right corner, or bottom-left to top-right when `flip` is set. A zero
+ * width/height box gives a vertical/horizontal line.
+ */
 export interface LineElement {
   id: string;
   type: 'line';
   position: ElementPosition;
   stroke?: string;
   strokeWidth?: number;
+  flip?: boolean;
   fragment?: number;
 }
 
@@ -253,6 +259,7 @@ export const LineElementSchema = z.object({
   position: ElementPositionSchema,
   stroke: z.string().optional(),
   strokeWidth: z.number().optional(),
+  flip: z.boolean().optional(),
   fragment: z.number().optional(),
 });
 
@@ -375,6 +382,10 @@ export function isCircleElement(el: SlideElement): el is CircleElement {
 
 export function isLineElement(el: SlideElement): el is LineElement {
   return el.type === 'line';
+}
+
+export function isShapeElement(el: SlideElement): el is RectangleElement | CircleElement | LineElement {
+  return el.type === 'rectangle' || el.type === 'circle' || el.type === 'line';
 }
 
 export function isHtmlElement(el: SlideElement): el is HtmlElement {

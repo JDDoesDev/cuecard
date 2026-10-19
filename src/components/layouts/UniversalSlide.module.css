@@ -13,7 +13,8 @@
 
 .element[data-element-type='heading'],
 .element[data-element-type='text'],
-.element[data-element-type='list'] {
+.element[data-element-type='list'],
+.element[data-element-type='line'] {
   overflow: visible;
 }
 

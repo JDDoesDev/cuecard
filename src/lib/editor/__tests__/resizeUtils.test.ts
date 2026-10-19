@@ -81,4 +81,12 @@ describe('clampToSlide', () => {
     expect(clampToSlide(120, 40)).toBe(100 - MIN_ON_SLIDE);
     expect(clampToSlide(-10, 40)).toBe(-10);
   });
+
+  it('keeps elements smaller than MIN_ON_SLIDE fully on the slide, edge to edge', () => {
+    expect(clampToSlide(97, 0)).toBe(97);
+    expect(clampToSlide(0, 0)).toBe(0);
+    expect(clampToSlide(105, 0)).toBe(100);
+    expect(clampToSlide(-3, 0)).toBe(0);
+    expect(clampToSlide(98, 3)).toBe(97);
+  });
 });

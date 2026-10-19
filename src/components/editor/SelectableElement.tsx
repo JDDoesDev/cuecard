@@ -1,7 +1,8 @@
 import { useRef, useState, useCallback } from 'react';
-import type { SlideElement } from '@/types/slide';
+import type { ElementPosition, SlideElement } from '@/types/slide';
 import { ResizeHandles } from './ResizeHandles';
 import { calculateResize, clampToSlide, type ResizeDirection } from '@/lib/editor/resizeUtils';
+import { LINE_SVG_STYLE, lineEndpoints, lineFromEndpoints, lineSvgCoords, snapLineEnd } from '@/lib/editor/lineGeometry';
 import styles from './SelectableElement.module.css';
 
 interface SelectableElementProps {
@@ -17,10 +18,14 @@ interface SelectableElementProps {
   onResizeEnd: (elementId: string, newPosition: any) => void;
   onResize?: (elementId: string, newPosition: any, disableSnap: boolean, direction: ResizeDirection) => void;
   onResizeStart?: (elementId: string) => void;
+  /** A line end was dragged: new box + direction (between onResizeStart and onResizeEnd). */
+  onLineChange?: (elementId: string, updates: { position: ElementPosition; flip?: boolean }) => void;
   onDragStart?: () => void;
   onDragEnd?: () => void;
   children: React.ReactNode;
 }
+
+const clampPercent = (n: number) => Math.max(0, Math.min(100, n));
 
 /** Blur any focused input/editor and focus the (focusable) slide canvas. */
 function moveFocusToCanvas(slideContainer: Element) {
@@ -48,6 +53,7 @@ export function SelectableElement({
   onResizeEnd,
   onResize,
   onResizeStart,
+  onLineChange,
   onDragStart,
   onDragEnd,
   children,
@@ -250,6 +256,59 @@ export function SelectableElement({
     [element, onPositionChange, onResize, onResizeStart, onResizeEnd]
   );
 
+  // Line end drag: the other end stays put; Shift locks to 45° steps, Alt
+  // turns off the snap to horizontal/vertical
+  const handleLineEndStart = useCallback(
+    (end: 0 | 1, e: React.MouseEvent) => {
+      if (element.type !== 'line' || e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const slideContainer = containerRef.current?.closest('[data-slide-container]');
+      if (!slideContainer) return;
+      moveFocusToCanvas(slideContainer);
+
+      const slideRect = slideContainer.getBoundingClientRect();
+      const fixed = lineEndpoints(element)[end === 0 ? 1 : 0];
+
+      setIsResizing(true);
+      onResizeStart?.(element.id);
+
+      const handleMouseMove = (moveEvent: MouseEvent) => {
+        const pointer = {
+          x: ((moveEvent.clientX - slideRect.left) / slideRect.width) * 100,
+          y: ((moveEvent.clientY - slideRect.top) / slideRect.height) * 100,
+        };
+        const snapped = snapLineEnd(fixed, pointer, slideRect, {
+          angleSnap: moveEvent.shiftKey,
+          free: moveEvent.altKey,
+        });
+        // Ends stay on the slide
+        const moving = { x: clampPercent(snapped.x), y: clampPercent(snapped.y) };
+        onLineChange?.(element.id, lineFromEndpoints(fixed, moving));
+      };
+
+      const handleMouseUp = () => {
+        setIsResizing(false);
+        onResizeEnd(element.id, element.position);
+        // The click that ends a handle press must not change the selection: a
+        // snapped end isn't under the pointer, so it can land on the canvas
+        // (deselect), and Shift would toggle the line off
+        const swallowClick = (clickEvent: MouseEvent) => clickEvent.stopPropagation();
+        window.addEventListener('click', swallowClick, { capture: true, once: true });
+        setTimeout(() => window.removeEventListener('click', swallowClick, { capture: true }), 0);
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    },
+    [element, onLineChange, onResizeStart, onResizeEnd]
+  );
+
+  const isLine = element.type === 'line';
+  const lineFlip = element.type === 'line' && !!element.flip;
   const isTextType = element.type === 'heading' || element.type === 'text' || element.type === 'list';
   const verticalAlign = isTextType ? element.verticalAlign : undefined;
 
@@ -258,7 +317,7 @@ export function SelectableElement({
       ref={containerRef}
       className={`${styles.elementContainer} ${isSelected || isEditing ? styles.selected : ''} ${
         isEditing ? styles.editing : ''
-      } ${isTextType ? styles.textContainer : ''} ${isDragging ? styles.dragging : ''} ${
+      } ${isTextType ? styles.textContainer : ''} ${isLine ? styles.lineContainer : ''} ${isDragging ? styles.dragging : ''} ${
         isResizing ? styles.resizing : ''
       }`}
       data-element-id={element.id}
@@ -292,7 +351,34 @@ export function SelectableElement({
       >
         {children}
       </div>
-      {isSelected && !isEditing && <ResizeHandles onResizeStart={handleResizeStart} />}
+      {isLine ? (
+        <>
+          {/* Only the stroke (with some slack) picks up the pointer, not the whole box */}
+          <svg className={styles.lineHitArea} style={LINE_SVG_STYLE} aria-hidden="true">
+            {element.type === 'line' && <line {...lineSvgCoords(element)} />}
+          </svg>
+          {isSelected && (
+            <>
+              <div
+                className={styles.lineEnd}
+                style={lineFlip ? { left: 0, top: '100%' } : { left: 0, top: 0 }}
+                data-resize-handle
+                title="Drag to move this end (Shift: 45° steps, Alt: no snapping)"
+                onMouseDown={(e) => handleLineEndStart(0, e)}
+              />
+              <div
+                className={styles.lineEnd}
+                style={lineFlip ? { left: '100%', top: 0 } : { left: '100%', top: '100%' }}
+                data-resize-handle
+                title="Drag to move this end (Shift: 45° steps, Alt: no snapping)"
+                onMouseDown={(e) => handleLineEndStart(1, e)}
+              />
+            </>
+          )}
+        </>
+      ) : (
+        isSelected && !isEditing && <ResizeHandles onResizeStart={handleResizeStart} />
+      )}
     </div>
   );
 }

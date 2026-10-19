@@ -51,3 +51,49 @@
 .editing > .content {
   pointer-events: auto;
 }
+
+/*
+ * Lines: the box can be zero-sized (horizontal/vertical) and a diagonal line
+ * only covers a sliver of it, so the box ignores the pointer; a wide invisible
+ * stroke and the two end handles pick it up instead.
+ */
+.lineContainer {
+  pointer-events: none;
+}
+
+.lineContainer > .content {
+  overflow: visible;
+}
+
+.lineContainer.selected,
+.lineContainer:hover:not(.selected) {
+  outline: none;
+  box-shadow: none;
+}
+
+.lineHitArea line {
+  stroke: transparent;
+  stroke-width: 14px;
+  stroke-linecap: round;
+  pointer-events: stroke;
+  cursor: move;
+}
+
+.lineContainer:hover .lineHitArea line,
+.lineContainer.selected .lineHitArea line {
+  stroke: rgba(59, 130, 246, 0.25);
+}
+
+.lineEnd {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border: 2px solid #3b82f6;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9);
+  cursor: crosshair;
+  pointer-events: auto;
+  z-index: 1;
+}

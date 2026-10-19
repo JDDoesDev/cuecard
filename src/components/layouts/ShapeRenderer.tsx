@@ -1,4 +1,8 @@
 import type { RectangleElement, CircleElement, LineElement } from '@/types/slide';
+import { LINE_SVG_STYLE, lineSvgCoords } from '@/lib/editor/lineGeometry';
+
+/** Stroke color of shapes that don't set one. */
+export const DEFAULT_STROKE = '#333';
 
 interface ShapeRendererProps {
   element: RectangleElement | CircleElement | LineElement;
@@ -6,7 +10,7 @@ interface ShapeRendererProps {
 
 export function ShapeRenderer({ element }: ShapeRendererProps) {
   const fill = 'fill' in element ? element.fill ?? 'transparent' : 'transparent';
-  const stroke = element.stroke ?? '#333';
+  const stroke = element.stroke ?? DEFAULT_STROKE;
   const strokeWidth = element.strokeWidth ?? 2;
 
   const svgStyle: React.CSSProperties = {
@@ -51,15 +55,14 @@ export function ShapeRenderer({ element }: ShapeRendererProps) {
       );
 
     case 'line':
+      // Horizontal/vertical lines have a zero-size box
       return (
-        <svg style={svgStyle} xmlns="http://www.w3.org/2000/svg">
+        <svg style={LINE_SVG_STYLE} xmlns="http://www.w3.org/2000/svg">
           <line
-            x1="0"
-            y1="0"
-            x2="100%"
-            y2="100%"
+            {...lineSvgCoords(element)}
             stroke={stroke}
             strokeWidth={strokeWidth}
+            strokeLinecap="round"
           />
         </svg>
       );

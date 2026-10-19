@@ -116,7 +116,7 @@ export function AddElementToolbar({ slideIndex, showGrid, onGridToggle, onElemen
     addElement({
       id: crypto.randomUUID(),
       type: 'line',
-      position: { x: 20, y: 48, width: 60, height: 4 },
+      position: { x: 20, y: 50, width: 60, height: 0 },
       stroke: '#333',
       strokeWidth: 2,
     });

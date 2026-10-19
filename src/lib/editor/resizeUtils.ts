@@ -12,9 +12,14 @@ export const MIN_ELEMENT_SIZE = 5;
  */
 export const MIN_ON_SLIDE = 5;
 
-/** Clamp an element's start (x or y) so at least MIN_ON_SLIDE of it stays on the slide. */
+/**
+ * Clamp an element's start (x or y) so at least MIN_ON_SLIDE of it stays on
+ * the slide. Smaller elements (e.g. a horizontal line's zero height) must stay
+ * fully on it, anywhere from edge to edge.
+ */
 export function clampToSlide(start: number, size: number): number {
-  return Math.max(MIN_ON_SLIDE - size, Math.min(100 - MIN_ON_SLIDE, start));
+  const onSlide = Math.min(MIN_ON_SLIDE, Math.max(0, size));
+  return Math.max(onSlide - size, Math.min(100 - onSlide, start));
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;

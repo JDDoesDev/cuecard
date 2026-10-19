@@ -374,7 +374,8 @@ function renderElementBox(
     width: `${finite(pos.width, 100)}%`,
     [isText ? 'min-height' : 'height']: `${finite(pos.height, 100)}%`,
     'z-index': idx,
-    overflow: isText ? 'visible' : 'hidden',
+    // Lines may have a zero-size box (horizontal/vertical) and draw outside it
+    overflow: isText || el.type === 'line' ? 'visible' : 'hidden',
     ...(vAlign === 'middle' || vAlign === 'bottom'
       ? { display: 'flex', 'align-items': vAlign === 'middle' ? 'center' : 'flex-end' }
       : vAlign === 'top' ? { display: 'flex' } : {}),

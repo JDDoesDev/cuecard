@@ -1,0 +1,70 @@
+.wrap {
+  display: inline-flex;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--bg-primary);
+  cursor: pointer;
+  transition: border-color var(--transition-fast, 120ms);
+}
+
+.button:hover,
+.button[aria-expanded='true'] {
+  border-color: var(--accent);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.current {
+  width: 16px;
+  height: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+}
+
+.grid {
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  grid-template-columns: repeat(6, 22px);
+  gap: 4px;
+  padding: 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 6px);
+  box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.18));
+}
+
+.swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  transition: transform var(--transition-fast, 120ms);
+}
+
+.swatch:hover {
+  transform: scale(1.12);
+}
+
+.swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.active {
+  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--accent);
+}

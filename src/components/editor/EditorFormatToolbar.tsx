@@ -20,6 +20,7 @@ import {
 } from '@/lib/editor/editorCommands';
 import { fontFamilyCss } from '@/lib/editor/fontFamily';
 import { LinkIcon, CodeIcon, ClearFormatIcon } from './toolbarIcons';
+import { COLORS, NONE_SWATCH } from '@/lib/editor/colorPalette';
 import styles from './EditorFormatToolbar.module.css';
 
 interface EditorFormatToolbarProps {
@@ -36,20 +37,12 @@ const FONT_SIZES = [
   '32px', '36px', '40px', '48px', '56px', '64px', '72px',
 ];
 
-const COLORS = [
-  '#000000', '#434343', '#666666', '#999999', '#cccccc', '#ffffff',
-  '#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#1abc9c', '#3498db',
-  '#9b59b6', '#e91e63', '#795548', '#607d8b',
-];
-
 const HIGHLIGHT_COLORS = [
   'rgba(231, 76, 60, 0.6)', 'rgba(230, 126, 34, 0.6)', 'rgba(241, 196, 15, 0.6)',
   'rgba(46, 204, 113, 0.6)', 'rgba(26, 188, 156, 0.6)', 'rgba(52, 152, 219, 0.6)',
   'rgba(155, 89, 182, 0.6)', 'rgba(233, 30, 99, 0.6)', 'rgba(121, 85, 72, 0.6)',
   'rgba(96, 125, 140, 0.6)',
 ];
-
-const NONE_SWATCH = 'linear-gradient(135deg, #fff 45%, #e74c3c 50%, #fff 55%)';
 
 type Popover = 'font' | 'size' | 'color' | 'highlight' | 'link' | null;
 
