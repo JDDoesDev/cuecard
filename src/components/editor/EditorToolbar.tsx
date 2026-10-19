@@ -154,11 +154,11 @@ export function EditorToolbar({
   }, [currentSlide, store]);
 
   const handleDualScreen = useCallback(() => {
-    const result = openDualScreen();
+    const result = openDualScreen(store.currentSlideIndex);
     if (!result.success && result.error === 'popup-blocked') {
       alert('Popup blocked. Please allow popups for this site to use dual-screen presenter mode.');
     }
-  }, []);
+  }, [store.currentSlideIndex]);
 
   return (
     <>

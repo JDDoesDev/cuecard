@@ -4,7 +4,7 @@ import { usePresentationSync } from '@/hooks/usePresentationSync';
 import { usePresenterTimer } from '@/hooks/usePresenterTimer';
 import { useKeyboardNav } from '@/hooks/useKeyboardNav';
 import { useFragmentNav } from '@/hooks/useFragmentNav';
-import { openAudienceWindow } from '@/hooks/usePresentationMode';
+import { openAudienceWindow, readStartSlideIndex, clearStartSlideParam } from '@/hooks/usePresentationMode';
 import { Slide } from '@/components/Slide/Slide';
 import { useCodeSpotlight } from '@/hooks/useCodeSpotlight';
 import styles from './PresenterView.module.css';
@@ -42,6 +42,18 @@ export function PresenterView({ aspectRatio = '16:9' }: PresenterViewProps) {
     currentSlideIndex,
     setCurrentSlide,
   );
+
+  // Start from the slide that was selected in the editor (?slide=N), once the
+  // deck has loaded (setCurrentSlide clamps to the slide count)
+  const hasSlides = slides.length > 0;
+  const startAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!hasSlides || startAppliedRef.current) return;
+    startAppliedRef.current = true;
+    const start = readStartSlideIndex();
+    if (start !== null) setCurrentSlide(start);
+    clearStartSlideParam();
+  }, [hasSlides, setCurrentSlide]);
 
   // Latest state for answering audience 'request-state' handshakes
   const stateRef = useRef({ slideIndex: currentSlideIndex, fragmentIndex: visibleFragment });

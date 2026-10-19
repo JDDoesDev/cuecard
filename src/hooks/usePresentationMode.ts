@@ -66,12 +66,38 @@ export function openAudienceWindow(): OpenDualScreenResult {
   return { success: true };
 }
 
-export function openDualScreen(): OpenDualScreenResult {
+/** Presenter URL parameter: 1-based slide to start presenting from. */
+const START_SLIDE_PARAM = 'slide';
+
+/**
+ * @param startSlideIndex - slide to start from (the slide selected in the
+ *   editor); the presenter reads it with readStartSlideIndex().
+ */
+export function openDualScreen(startSlideIndex = 0): OpenDualScreenResult {
   const result = openAudienceWindow();
   if (!result.success) return result;
 
-  // Convert current tab to presenter mode
-  window.location.search = '?mode=presenter';
+  // Convert current tab to presenter mode (currentSlideIndex isn't persisted
+  // across the reload, so the start slide goes in the URL)
+  const params = new URLSearchParams({ mode: 'presenter' });
+  if (startSlideIndex > 0) params.set(START_SLIDE_PARAM, String(startSlideIndex + 1));
+  window.location.search = `?${params}`;
 
   return { success: true };
+}
+
+/** The 0-based start slide from the presenter URL, or null. */
+export function readStartSlideIndex(): number | null {
+  const raw = new URLSearchParams(window.location.search).get(START_SLIDE_PARAM);
+  if (raw === null) return null;
+  const slide = Number(raw);
+  return Number.isInteger(slide) && slide >= 1 ? slide - 1 : null;
+}
+
+/** Drop the start slide from the URL so a later reload doesn't jump back to it. */
+export function clearStartSlideParam() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has(START_SLIDE_PARAM)) return;
+  url.searchParams.delete(START_SLIDE_PARAM);
+  window.history.replaceState(window.history.state, '', url);
 }
