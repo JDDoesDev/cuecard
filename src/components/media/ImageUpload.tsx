@@ -1,10 +1,9 @@
 import { useState } from 'react';
-import { compressForSlide } from '@/lib/media/imageCompression';
-import { cacheImageBlob } from '@/lib/media/imageCaching';
+import { addImageFile } from '@/lib/media/projectAssets';
 import styles from './ImageUpload.module.css';
 
 interface ImageUploadProps {
-  onImageAdded: (blobUrl: string, originalName: string, cacheKey?: string) => void;
+  onImageAdded: (blobUrl: string, url: string, cacheKey?: string) => void;
 }
 
 export function ImageUpload({ onImageAdded }: ImageUploadProps) {
@@ -26,12 +25,8 @@ export function ImageUpload({ onImageAdded }: ImageUploadProps) {
       setStatus(`Compressing ${file.name}... (${i + 1}/${fileArray.length})`);
 
       try {
-        const compressed = await compressForSlide(file);
-
-        // Content-addressed key (image:<sha256>) — distinct files never collide
-        const { cacheKey, blobUrl } = await cacheImageBlob(compressed, file.name);
-
-        onImageAdded(blobUrl, file.name, cacheKey);
+        const { url, blobUrl, cacheKey } = await addImageFile(file);
+        onImageAdded(blobUrl ?? '', url, cacheKey);
       } catch (error) {
         console.error('Failed to process image:', error);
         const reason = error instanceof Error && error.message ? error.message : 'unknown error';

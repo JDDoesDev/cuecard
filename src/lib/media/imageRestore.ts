@@ -13,6 +13,7 @@ import {
   clearImageMissing,
   releaseUnreferencedUrls,
 } from './imageCaching';
+import { isProjectAssetUrl } from './projectAssets';
 
 export interface CachedUrlUpdate {
   slideIndex: number;
@@ -112,8 +113,9 @@ export function releaseUnreferencedImages(presentation: Presentation | null): vo
   releaseUnreferencedUrls(presentation ? collectImageCacheKeys(presentation) : new Set());
 }
 
+/** File names / paths to link to cached blobs. Project assets (`/assets/...`) are served by the dev server. */
 function isLocalFileRef(url: string): boolean {
-  return !!url && !/^(https?:|data:|blob:|\/\/)/i.test(url);
+  return !!url && !/^(https?:|data:|blob:|\/\/)/i.test(url) && !isProjectAssetUrl(url);
 }
 
 /**

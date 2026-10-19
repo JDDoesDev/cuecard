@@ -7,7 +7,7 @@ import { HtmlFrame } from './HtmlFrame';
 import { parseYouTubeUrl, getYouTubeEmbedUrl } from './youtube';
 import { rehypeSanitizeRaw } from './rehypeSanitizeRaw';
 import type { SlideElement, ImageElement, CodeElement } from '@/types/slide';
-import { cacheImageBlob } from '@/lib/media/imageCaching';
+import { addImageFile } from '@/lib/media/projectAssets';
 import { presentationStore } from '@/store/presentationStore';
 import { usePresentationMode } from '@/hooks/usePresentationMode';
 import { getVisibleItemCount } from '@/lib/fragments';
@@ -70,11 +70,11 @@ function relinkImage(elementId: string) {
     const file = input.files?.[0];
     if (!file) return;
     try {
-      const { cacheKey, blobUrl } = await cacheImageBlob(file, file.name);
+      const { url, blobUrl, cacheKey } = await addImageFile(file, { compress: false });
       const state = presentationStore.getState();
       const slideIndex = state.presentation?.slides.findIndex((s) => s.elements.some((e) => e.id === elementId)) ?? -1;
       if (slideIndex < 0) return;
-      state.updateElement(slideIndex, elementId, { cacheKey, cachedUrl: blobUrl, url: file.name } as Partial<SlideElement>);
+      state.updateElement(slideIndex, elementId, { cacheKey, cachedUrl: blobUrl, url } as Partial<SlideElement>);
     } catch (err) {
       console.error('Failed to relink image:', err);
     }

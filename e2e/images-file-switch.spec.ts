@@ -7,7 +7,8 @@ import { test, expect, fixture, openEditor, editorCanvas, importMarkdown, waitFo
  * Flow: upload image -> save deck -> load a different deck -> reopen the first
  * deck -> image must display (and still display after a page reload).
  *
- * Save downloads the file and Open uses <input type=file>.
+ * Save downloads the file and Open uses <input type=file>. The dev server
+ * writes uploads to CUECARD_ASSETS_DIR (see playwright.config.ts).
  */
 
 async function uploadImage(page: Page) {
@@ -49,8 +50,11 @@ test.describe('images across file switches', () => {
     expect(download.suggestedFilename()).toMatch(/\.cuecard\.json$/);
     const savedPath = testInfo.outputPath(download.suggestedFilename());
     await download.saveAs(savedPath);
-    // Uploaded images are embedded so the file works on another machine
-    expect(fs.readFileSync(savedPath, 'utf8')).toContain('"assets"');
+    // Uploaded images are written to the project's assets folder; the file
+    // references them by path instead of embedding them
+    const saved = fs.readFileSync(savedPath, 'utf8');
+    expect(saved).toContain('"url": "/assets/red-64x48');
+    expect(saved).not.toContain('"assets"');
 
     await loadOtherDeck(page);
 

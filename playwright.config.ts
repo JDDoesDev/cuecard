@@ -38,6 +38,8 @@ export default defineConfig({
     command: `pnpm exec vite --port ${PORT} --strictPort`,
     url: baseURL,
     reuseExistingServer: false,
+    // Images added in tests go here, never into the project's public/assets
+    env: { CUECARD_ASSETS_DIR: 'test-results/e2e-assets' },
     timeout: 120_000,
     stdout: 'ignore',
     stderr: 'pipe',

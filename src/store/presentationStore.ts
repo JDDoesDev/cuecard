@@ -29,6 +29,13 @@ export interface CachedUrlUpdate {
   cachedUrl: string;
 }
 
+export interface ProjectAssetLink {
+  slideIndex: number;
+  elementId: string;
+  /** `/assets/...` URL of the image's file in public/assets */
+  url: string;
+}
+
 export interface PresentationState {
   presentation: Presentation | null;
   currentSlideIndex: number;
@@ -65,6 +72,8 @@ export interface PresentationState {
 
   /** Update image cachedUrl values without creating undo history. */
   restoreCachedUrls: (updates: CachedUrlUpdate[]) => void;
+  /** Point images at their public/assets files (drops cacheKey/cachedUrl) without creating undo history. */
+  linkProjectAssets: (links: ProjectAssetLink[]) => void;
 
   // Presentation-level actions
   setFonts: (fontHeading?: string, fontBody?: string) => void;
@@ -360,6 +369,30 @@ export const presentationStore = createStore<PresentationState>()(
               );
               if (element && element.type === 'image') {
                 element.cachedUrl = cachedUrl;
+              }
+            }
+          });
+        } finally {
+          if (wasTracking) presentationStore.temporal.getState().resume();
+        }
+      },
+
+      linkProjectAssets: (links) => {
+        if (links.length === 0) return;
+        const temporalApi = presentationStore.temporal.getState();
+        const wasTracking = temporalApi.isTracking;
+        temporalApi.pause();
+        try {
+          set((state) => {
+            if (!state.presentation) return;
+            for (const { slideIndex, elementId, url } of links) {
+              const element = state.presentation.slides[slideIndex]?.elements.find(
+                (el) => el.id === elementId
+              );
+              if (element && element.type === 'image') {
+                element.url = url;
+                delete element.cacheKey;
+                delete element.cachedUrl;
               }
             }
           });

@@ -7,6 +7,7 @@ import { openDualScreen } from '@/hooks/usePresentationMode';
 import { ThemeOptions } from '@/components/theme/ThemeOptions';
 import type { UiThemePreference } from '@/lib/theme/uiTheme';
 import { saveToFile, openFromFile, formatValidationError } from '@/lib/storage/fileStorage';
+import { moveCachedImagesToProject } from '@/lib/media/projectAssets';
 import { createPresentation } from '@/types/presentation';
 import { LAYOUTS, type LayoutPreset } from '@/types/slide';
 import { getAvailableFonts } from '@/lib/fonts/availableFonts';
@@ -95,11 +96,16 @@ export function EditorToolbar({
   }, [undo, redo]);
 
   // Save downloads the deck; Chrome asks where to save it when "Ask where to
-  // save each file" is on. Only failures need a status message.
+  // save each file" is on. Images still held only in IndexedDB are written to
+  // public/assets first (dev server), so the deck references project files.
+  // Only failures need a status message.
   const handleSaveToFile = useCallback(async () => {
     if (!store.presentation) return;
     try {
-      await saveToFile(store.presentation);
+      const links = await moveCachedImagesToProject(store.presentation);
+      presentationStore.getState().linkProjectAssets(links);
+      const presentation = presentationStore.getState().presentation;
+      if (presentation) await saveToFile(presentation);
     } catch (e) {
       console.error('Save failed:', e);
       setSaveStatus('Save failed');

@@ -3,6 +3,8 @@ import { usePresentationStore } from '@/hooks/usePresentationStore';
 import type { SlideElement } from '@/types/slide';
 import { ImageUpload } from '@/components/media/ImageUpload';
 import { URLImageInput } from '@/components/media/URLImageInput';
+import { ProjectAssetPicker } from '@/components/media/ProjectAssetPicker';
+import { projectAssetsEnabled } from '@/lib/media/projectAssets';
 import { extractYouTubeId } from '@/components/media/YouTubeEmbed';
 import styles from './AddElementToolbar.module.css';
 
@@ -22,7 +24,7 @@ interface AddElementToolbarProps {
 export function AddElementToolbar({ slideIndex, showGrid, onGridToggle, onElementAdded }: AddElementToolbarProps) {
   const store = usePresentationStore();
   const [imagePopoverOpen, setImagePopoverOpen] = useState(false);
-  const [imageTab, setImageTab] = useState<'upload' | 'url'>('upload');
+  const [imageTab, setImageTab] = useState<'upload' | 'project' | 'url'>('upload');
   const [videoPopoverOpen, setVideoPopoverOpen] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
 
@@ -44,12 +46,12 @@ export function AddElementToolbar({ slideIndex, showGrid, onGridToggle, onElemen
   // `url` keeps the original filename / remote URL (used for markdown export
   // and relinking); the blob itself lives in IndexedDB under `cacheKey` and
   // `cachedUrl` is regenerated each session by App's image-restore effect.
-  const handleImageAdded = (blobUrl: string, originalName: string, cacheKey?: string) => {
+  const handleImageAdded = (blobUrl: string, url: string, cacheKey?: string) => {
     addElement({
       id: crypto.randomUUID(),
       type: 'image',
       position: { x: 25, y: 15, width: 50, height: 60 },
-      url: originalName,
+      url,
       ...(blobUrl ? { cachedUrl: blobUrl } : {}),
       ...(cacheKey ? { cacheKey } : {}),
     });
@@ -160,6 +162,14 @@ export function AddElementToolbar({ slideIndex, showGrid, onGridToggle, onElemen
                 >
                   Upload
                 </button>
+                {projectAssetsEnabled && (
+                  <button
+                    className={imageTab === 'project' ? styles.activeTab : ''}
+                    onClick={() => setImageTab('project')}
+                  >
+                    Project
+                  </button>
+                )}
                 <button
                   className={imageTab === 'url' ? styles.activeTab : ''}
                   onClick={() => setImageTab('url')}
@@ -170,6 +180,8 @@ export function AddElementToolbar({ slideIndex, showGrid, onGridToggle, onElemen
               <div className={styles.popoverContent}>
                 {imageTab === 'upload' ? (
                   <ImageUpload onImageAdded={handleImageAdded} />
+                ) : imageTab === 'project' ? (
+                  <ProjectAssetPicker onImageAdded={handleImageAdded} />
                 ) : (
                   <URLImageInput onImageAdded={handleImageAdded} />
                 )}

@@ -73,7 +73,8 @@ Slide containers (both `<Slide>` component and editor canvas `.slideCanvas`) use
 ### Storage
 
 - Autosave to localStorage (`src/lib/storage/autosave.ts`)
-- IndexedDB via `idb-keyval` for media blobs
+- **Project assets** (`src/lib/media/projectAssets.ts`, dev-server plugin `vite/projectAssets.ts`): a project folder holds one slideshow, so images live as files in `public/assets/` and image elements reference them as `/assets/<name>` — commit the folder to move a deck. Uploads/relinks are written there via `POST /__cuecard/assets`; the image popover's Project tab lists the folder. Save first moves any IndexedDB-only images (`cacheKey`) there (`linkProjectAssets`, no undo entry). Only under `vite` dev (`import.meta.env.DEV`); a static build keeps the IndexedDB path. e2e sets `CUECARD_ASSETS_DIR` so tests never write into `public/assets`.
+- IndexedDB via `idb-keyval` for media blobs (fallback outside the dev server; legacy decks)
 - File import/export for markdown files
 - Deck files (`.cuecard.json`, `src/lib/storage/fileStorage.ts`) deliberately avoid the File System Access API — Chrome's pickers refuse some folders ("contains system files", e.g. `\\wsl.localhost` paths on Windows):
   - **Open** uses an ordinary `<input type=file>`.
