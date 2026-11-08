@@ -1,0 +1,1736 @@
+{
+  "schemaVersion": "1.1",
+  "id": "3f200094-36b5-474c-b78d-9977df2f4222",
+  "title": "The Hook Migration",
+  "theme": "cyber-grid",
+  "fontHeading": "Poppins",
+  "fontBody": "Source Sans 3",
+  "slides": [
+    {
+      "id": "fe8f0901-2e4d-408e-9730-6a875487edb9",
+      "layout": "title",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "2cb12821-d008-4fdc-9929-e4ae508bfd63",
+          "position": {
+            "x": 15,
+            "y": 30,
+            "width": 77.86,
+            "height": 20
+          },
+          "type": "heading",
+          "content": "<strong>The Great Hook Migration</strong>",
+          "level": 1
+        },
+        {
+          "id": "db59c54f-57f0-448a-b2fb-756916107823",
+          "type": "text",
+          "position": {
+            "x": 18.390151515151516,
+            "y": 45,
+            "width": 60,
+            "height": 10
+          },
+          "content": "<p><span style=\"font-size: 3.6cqw;\">Getting down with OOP</span></p>"
+        },
+        {
+          "id": "3049702e-854a-4c97-87ff-6bad3244df84",
+          "type": "text",
+          "position": {
+            "x": 18.39,
+            "y": 59.61,
+            "width": 35.54,
+            "height": 7.96
+          },
+          "content": "<p style=\"line-height: 1.2;\"><span style=\"font-size: 3.2cqw;\">JD Flynn</span><br><span style=\"font-size: 2cqw;\">- Also known as a \"buster\"</span></p>"
+        }
+      ],
+      "notes": "OUTLINE DRAFT. Rough time budget for 45 minutes:\n\n- Intro and why: 6 min\n- How a hook class works: 4 min\n- Live stages B to J: 25 min\n- Rector: 4 min\n- Gotchas, checklist, wrap: 3 min\n- Questions: 3 min\n\nBefore going on: site running, `main` checked out, `ddev drush cr` done, browser tabs open for /node/2/edit, /moving-hooks-classes, /admin/reports/status, /admin/help/token, /admin/help/jddoesdev_core and Mailpit."
+    },
+    {
+      "id": "9283246b-3165-4071-90e9-67e05674a77b",
+      "layout": "title-list",
+      "transition": "slide",
+      "elements": [
+        {
+          "id": "3a63fc49-e23d-4e8d-a98d-8d7068e68b2a",
+          "position": {
+            "x": 12,
+            "y": 10,
+            "width": 76,
+            "height": 15
+          },
+          "type": "heading",
+          "content": "About Me",
+          "level": 1
+        },
+        {
+          "id": "d4a31b38-d7e8-4e1a-9987-479245f8c1fa",
+          "type": "list",
+          "position": {
+            "x": 14,
+            "y": 30,
+            "width": 72,
+            "height": 58
+          },
+          "items": [
+            "Senior Software Engineer",
+            "Drupal > 11 years",
+            "twitch.tv/jddoesdev"
+          ],
+          "ordered": false,
+          "fragment": 1,
+          "fragmentPerItem": true
+        },
+        {
+          "id": "19453967-4277-4d09-b4d4-6d7b37bb057c",
+          "type": "image",
+          "position": {
+            "x": 26.03,
+            "y": 2.31,
+            "width": 91.19,
+            "height": 104.1
+          },
+          "url": "/assets/EndAlert.webp",
+          "fragment": 4
+        }
+      ],
+      "notes": "Same as the Beyond the Bubble slide. Update if anything has changed."
+    },
+    {
+      "id": "637ba306-70d9-409b-b0fa-13c49e5dbce4",
+      "layout": "title",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "95bca416-be4a-4a6a-bf67-0358f60a1ec7",
+          "type": "heading",
+          "position": {
+            "x": 12.134999999999998,
+            "y": 30,
+            "width": 75.73,
+            "height": 20
+          },
+          "content": "First, a couple questions... FOR YOU!",
+          "level": 1,
+          "textAlign": "center"
+        },
+        {
+          "id": "bd38417b-de30-4583-86e3-fb0169f5fb12",
+          "type": "text",
+          "position": {
+            "x": 20,
+            "y": 55,
+            "width": 60,
+            "height": 10
+          },
+          "content": ""
+        }
+      ],
+      "notes": "If you're here wondering what this talk is about, well first, thanks for believing in me.  If you're here because you walked into the wrong room, I'll close my eyes for few seconds and give you a chance to run to the session you meant to go to.\n\nAlright, how many of  you have custom modules on your Drupal apps?\nHow many of those apps have custom modules that are really a catch-all for functionality that just doesn't fit anywhere else?"
+    },
+    {
+      "id": "2e7a321a-3ec0-4004-87be-b2be191ee4b2",
+      "layout": "title",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "58a62d8f-c3b8-4c92-8d88-fab355668f62",
+          "type": "heading",
+          "position": {
+            "x": 11.590000000000003,
+            "y": 40,
+            "width": 76.82,
+            "height": 20
+          },
+          "content": "<span style=\"font-size: 6.4cqw;\">Let's set the scene...</span>",
+          "level": 1,
+          "textAlign": "center"
+        }
+      ],
+      "notes": "If you're here wondering what this talk is about, well first, thanks for believing in me.  If you're here because you walked into the wrong room, I'll close my eyes for few seconds and give you a chance to run to the session you meant to go to.\n\nAlright, how many of  you have custom modules on your Drupal apps?\nHow many of those apps have custom modules that are really a catch-all for functionality that just doesn't fit anywhere else?\n"
+    },
+    {
+      "id": "dac30976-d40d-4752-a4d4-3b9c958ca0d9",
+      "layout": "freestyle",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "9c99fdde-8667-467f-993e-432c901985e4",
+          "type": "image",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 100,
+            "height": 100
+          },
+          "url": "/assets/panic.gif"
+        }
+      ],
+      "notes": "everyone start freaking out immediately!  get worried!  everything is ruined and we should all duck and cover and "
+    },
+    {
+      "id": "1778ed83-0fd1-47ab-88c2-2b192d2b9255",
+      "layout": "title-list",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "fbcaf510-4650-4bb6-9c99-3252d0ae1186",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 9.818835451637558,
+            "width": 76,
+            "height": 15
+          },
+          "content": "<span style=\"font-size: 4cqw;\">The old hook system is going away</span>",
+          "level": 1
+        },
+        {
+          "id": "f4cc2098-a59c-4e45-b0e9-40eecf385357",
+          "type": "list",
+          "position": {
+            "x": 14,
+            "y": 30,
+            "width": 72,
+            "height": 58
+          },
+          "items": [
+            "<code>[#Hook]</code> introduced in 11.1",
+            "Autoloading from <code>.inc</code> deprecated in 11.2",
+            "<code>.module</code> <code>.theme</code> and <code>.profile</code> are deprecated in 11.5",
+            "Fully removed by 13"
+          ],
+          "ordered": false
+        }
+      ]
+    },
+    {
+      "id": "c7aefcb5-6a24-4bcf-bedb-a4956ed5a8b9",
+      "layout": "title-list",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "5b090d69-b146-4cfc-bef8-9fc1da528a6b",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 10,
+            "width": 76,
+            "height": 15
+          },
+          "content": "A \"hypothetical\" module",
+          "level": 1
+        },
+        {
+          "id": "1a7ad481-9bcb-4fa5-a2f2-ea8810dbddf5",
+          "type": "list",
+          "position": {
+            "x": 14,
+            "y": 30,
+            "width": 72,
+            "height": 58
+          },
+          "items": [
+            "<code>jddoesdev_core</code> module",
+            "Catch-all, junk drawer of a module",
+            "Somehow does everything and nothing at the same time",
+            "Full of ways that past me tried to anger present me"
+          ],
+          "ordered": false,
+          "fragmentPerItem": true
+        }
+      ],
+      "notes": "So, we're going to be looking at a completely made up module that's nothing like anything any of us have ever seen anywhere.\n\nWe've got hook_help, hook_form_alter, hook_module_implements_alter, some preprocess, some presave, and even a tokens.inc and comments that haven't been updated in years\n"
+    },
+    {
+      "id": "550604fb-3184-4938-a582-1d4057492251",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "5bca4ae4-ddd5-4f61-b0da-08955e0c21c4",
+          "type": "heading",
+          "position": {
+            "x": 8.739113127935674,
+            "y": 8.72465819344977,
+            "width": 76,
+            "height": 10
+          },
+          "content": "Drupal is already telling you*",
+          "level": 2
+        },
+        {
+          "id": "839f7333-cf53-4149-aa43-527440cd45ac",
+          "type": "code",
+          "position": {
+            "x": 12,
+            "y": 22,
+            "width": 76,
+            "height": 56.42
+          },
+          "code": "jddoesdev_core_module_implements_alter without a\n#[LegacyModuleImplementsAlter] attribute is deprecated in\ndrupal:11.2.0 and removed in drupal:12.0.0.\n\njddoesdev_core_requirements without a #[LegacyRequirementsHook]\nattribute is deprecated in drupal:11.3.0 and removed in\ndrupal:13.0.0.\n\nAutoloading hooks in the file (.../jddoesdev_core.tokens.inc)\nis deprecated in drupal:11.2.0 and is removed from drupal:12.0.0.",
+          "language": "text"
+        },
+        {
+          "id": "9a4eb752-235a-480c-965b-f04ad2028818",
+          "type": "text",
+          "position": {
+            "x": 12,
+            "y": 85,
+            "width": 50,
+            "height": 15
+          },
+          "content": "<p><span style=\"font-size: 2cqw;\">*If you know where to look</span></p>"
+        }
+      ],
+      "notes": "These are actual warnings \n\nPoint out the version numbers: 12.0.0 and 13.0.0.\n\nFun part: you won't see these. Core raises them with @trigger_error(), so they never hit dblog or the screen. This is so that your dblog doesn't get full of deprecation notices in prod, so I had to write my own set_error_handler() to catch them. The way these warnings are captured are silent at runtime, but they surface in tests and static analysis"
+    },
+    {
+      "id": "e85f9ccf-2189-40e2-bbc4-e09f2f80f8bc",
+      "layout": "title",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "e497aaff-9e80-4532-8818-59739c149516",
+          "type": "heading",
+          "position": {
+            "x": 10.594999999999999,
+            "y": 27.306397306397304,
+            "width": 78.81,
+            "height": 20
+          },
+          "content": "No warning ≠ no problem",
+          "level": 1,
+          "textAlign": "center"
+        },
+        {
+          "id": "f338cd00-3aca-4d31-be5f-da9485c2d8be",
+          "type": "text",
+          "position": {
+            "x": 20,
+            "y": 43.93939393939394,
+            "width": 60,
+            "height": 10
+          },
+          "content": "<p>Plain hooks in <code>.module</code> raise <em>nothing</em> on 11.4.8</p>",
+          "textAlign": "center"
+        }
+      ],
+      "notes": "form_alter, preprocess_node, entity_presave, cron, help, page_attachments, mail_alter, node_access: zero deprecation notices.\n\nSo the hooks you have the most of are the ones that don't warn you. This is why \"wait and see\" is a bad plan.\n\nNow let's take a look at a basic hook migration.  No code, just the wrapper.\n\nTODO: Check the current status of the .module deprecation (https://www.drupal.org/node/3619765) and Drupal 12 hooks outside the main file (https://www.drupal.org/node/3613767) right before the talk and say exactly what they say. Don't guess on stage."
+    },
+    {
+      "id": "a80c8c8f-1f6e-4ca5-bc22-74024f3d1ce3",
+      "layout": "two-column",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "8adb0e37-5845-4f52-86f0-552e75e6d413",
+          "type": "heading",
+          "position": {
+            "x": 9.990000000000002,
+            "y": 14.347949160698615,
+            "width": 76,
+            "height": 12
+          },
+          "content": "Before",
+          "level": 2
+        },
+        {
+          "id": "f10253e2-1357-45b5-a3dc-9011aabeca06",
+          "type": "code",
+          "position": {
+            "x": 9.990000000000002,
+            "y": 28.02,
+            "width": 80.02,
+            "height": 43.96
+          },
+          "code": "/**\n * Implements hook_form_alter().\n */\nfunction mymodule_form_alter(&$form, FormStateInterface $form_state, $form_id) {\n  // ...\n}",
+          "language": "php"
+        }
+      ],
+      "notes": "A standard hook.  One that most of us have probably used with some regularity.  It's warm, it's familiar, and it makes you feel good inside.\nI know it's hard to say goodbye, but don't worry, it's replacement will feel just as Drupally as this one, but with a modern flair!\n"
+    },
+    {
+      "id": "cefece4b-4de3-4d65-a2aa-b4d13e3f8e49",
+      "layout": "freestyle",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "296bfb8e-244b-47ef-ba47-80d1d521d596",
+          "type": "image",
+          "position": {
+            "x": 1.8400000000000034,
+            "y": 2,
+            "width": 96.32,
+            "height": 96
+          },
+          "url": "/assets/goodbye.gif"
+        }
+      ],
+      "notes": "Change is scary.  I know.  It is hard to say goodbye to yesterday, but don't worry... it's still the Drupal we all know and love."
+    },
+    {
+      "id": "70f99396-6c2e-4977-a32a-10967d04c2ed",
+      "layout": "freestyle",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "4e3d9689-709c-483f-ada8-c64de7a05af3",
+          "type": "heading",
+          "position": {
+            "x": 7.085000000000001,
+            "y": 14.795000000000002,
+            "width": 36,
+            "height": 29.5
+          },
+          "content": "After",
+          "level": 2
+        },
+        {
+          "id": "3f27db9e-bb71-42c4-b84f-c2252a071249",
+          "type": "code",
+          "position": {
+            "x": 7.484999999999999,
+            "y": 29.545,
+            "width": 85.03,
+            "height": 57.46
+          },
+          "code": "namespace Drupal\\mymodule\\Hook;\n\nclass MymoduleFormHooks {\n\n  #[Hook('form_alter')]\n  public function formAlter(array &$form, FormStateInterface $form_state, string $form_id): void {\n    // ...\n  }\n\n}",
+          "language": "php"
+        }
+      ],
+      "notes": "See?  It's not too bad, right?  We still name the hook, we still have the same arguments, it's just more modern and, in my opinion, cleaner.\n\nLet's look inside a hook class"
+    },
+    {
+      "id": "d5d2285f-ec36-45fc-bca6-8bfd80f64ed3",
+      "layout": "title-list",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "c245c5d8-d4e0-4ff9-993e-da7aa25e42a2",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 10,
+            "width": 76,
+            "height": 15
+          },
+          "content": "The magic of a hook <s>class </s>SERVICE!",
+          "level": 2
+        },
+        {
+          "id": "4d08694d-35fc-4e29-98f7-ea5833624645",
+          "type": "list",
+          "position": {
+            "x": 14,
+            "y": 30,
+            "width": 72,
+            "height": 58
+          },
+          "items": [
+            "Class file lives in <code>src/Hook/</code>",
+            "Namespaced <code>Drupal\\mymodule\\Hook</code>",
+            "Named <code>{Module}{Group}Hooks</code>: Form, Theme, Entity, Token...**",
+            "<code>#[Hook('hook_name')]</code> on any public method",
+            "Constructor injection instead of <code>\\Drupal::</code>",
+            "No <code>services.yml</code> needed: core registers and autowires it"
+          ],
+          "ordered": false,
+          "fragment": 1,
+          "fragmentPerItem": true,
+          "lineHeight": 1.4
+        }
+      ],
+      "notes": "Group by what the hooks deal with, not one giant MymoduleHooks class. One giant class is just a .module file with extra steps.\nFile location: should live in `module/src/Hook` and you can make it even more granular if you want\n\nNamespace: Needs to match the module + folder name so that it gets autoloaded.  If you went more granular it might be Drupal\\mymodule\\Hook\\Entity. \n\nClassname: I'm using standard Drupal naming conventions with the format Modulename Type Hooks. Now, you can name this anything you like, but the classname needs to match the filename or it won't get picked up correctly.\n\nThe attribute: This is where the magic is.  ANY public method in the class can be prefixed with a hook attribute and act as that hook\n\nBy using classes... technically services, we inject through the class constructor instead of the global \\Drupal:: class\n"
+    },
+    {
+      "id": "c92456f3-9c42-436d-ba2e-e1ee9a216c59",
+      "layout": "freestyle",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "5629c73f-b965-456c-a9c0-739ea14adbbc",
+          "type": "image",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 100,
+            "height": 100
+          },
+          "url": "/assets/hellyeah.gif"
+        }
+      ],
+      "notes": "Pretty cool, right?  But why"
+    },
+    {
+      "id": "0a39dd91-84f3-463f-bf31-d221158cbf80",
+      "layout": "title-list",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "ed4eb908-f69f-47ce-b731-766fabbaa1e1",
+          "type": "heading",
+          "position": {
+            "x": 5.195,
+            "y": 34.495,
+            "width": 89.61,
+            "height": 31.01
+          },
+          "content": "<span style=\"font-size: 6.4cqw;\">Why change from </span><code>.module</code><span style=\"font-size: 6.4cqw;\">?</span>",
+          "level": 1,
+          "textAlign": "center"
+        }
+      ],
+      "notes": "Great question, but I'm gonna make you wait before I answer that one.  Instead, let's look at it in practice."
+    },
+    {
+      "id": "f731d910-6614-4703-a239-2fb1b043669b",
+      "layout": "title",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "aec6ae99-0ba9-4486-9bed-78346a1992c2",
+          "type": "heading",
+          "position": {
+            "x": 6.692601222964203,
+            "y": 9.892679400561626,
+            "width": 70,
+            "height": 20
+          },
+          "content": "Meet `jddoesdev_core`",
+          "level": 1
+        },
+        {
+          "id": "edd4569e-fce3-4196-bce5-da0e21505234",
+          "type": "text",
+          "position": {
+            "x": 11.6926012229642,
+            "y": 34.71473851030111,
+            "width": 60,
+            "height": 10
+          },
+          "content": "<p>The bestest module ever built to contain the mostest functionality that doesn't fit anywhere else so it all got put in here!</p>"
+        },
+        {
+          "id": "5073d78a-6f20-4921-993b-33b3fde255a8",
+          "type": "image",
+          "position": {
+            "x": 37.78358178377618,
+            "y": 44.71,
+            "width": 55.01,
+            "height": 55.29
+          },
+          "url": "/assets/benjammins-but-in-yellow.gif",
+          "fragment": 1
+        }
+      ],
+      "notes": "Every agency has one. The module where every hook that didn't fit anywhere else ended up. Maintained by six people, two of whom have left, one of whom was me.\n\nIt's fake, but it's written to look real. If you recognize something familiar, that's how I tried to make it. Don't blame me for your bad decisions. I've got enough of my own to worry about."
+    },
+    {
+      "id": "b65df937-2781-40f7-be57-31a7324c621d",
+      "layout": "title-list",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "88550a1a-a440-4a5a-808e-ac33f0937254",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 10,
+            "width": 76,
+            "height": 15
+          },
+          "content": "What ten years looks like",
+          "level": 2
+        },
+        {
+          "id": "ec818c49-797d-48a5-b8a5-845ab2b17cb5",
+          "type": "list",
+          "position": {
+            "x": 14,
+            "y": 30,
+            "width": 72,
+            "height": 58
+          },
+          "items": [
+            "<code>\\Drupal::</code> calls everywhere",
+            "A docblock that names the wrong hook<ul><li>That's if the hook has a docblock at all</li></ul>",
+            "<code>_jddoesdev_core_clean_title_for_blog_nodes()</code>",
+            "A <code>@TODO: Refactor this</code> from 2018",
+            "A hook defined inside an <code>if</code>"
+          ],
+          "ordered": false,
+          "fragment": 1,
+          "fragmentPerItem": true,
+          "lineHeight": 1.6
+        }
+      ],
+      "notes": "We've got Drupal calls everywhere, often with no comments to help intellisense figure out what the hell is going on.\nDocblocks that say the wrong hook name, which is great when trying to figure out how something works.\nSome hooks don't even have a docblock!\nHelper functions\nTodos and temporary workarounds\nConditional hooks\nMixed conventions, tabs with spaces, newline curly braces, cats and dogs living together, mass hysteria!"
+    },
+    {
+      "id": "f7c02d5d-a6fd-4e9b-98bf-e25e3e6de175",
+      "layout": "title",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "a6f83752-cefd-4d5e-8768-935c1271de21",
+          "type": "heading",
+          "position": {
+            "x": 15,
+            "y": 2.462988648908766,
+            "width": 70,
+            "height": 20
+          },
+          "content": "In other words:",
+          "level": 1
+        },
+        {
+          "id": "6f36ae57-dfad-499e-a7e7-a0daa16a9b0a",
+          "type": "text",
+          "position": {
+            "x": 20,
+            "y": 55,
+            "width": 60,
+            "height": 10
+          },
+          "content": ""
+        },
+        {
+          "id": "c9eb71c0-732f-4831-8606-0fa145f03422",
+          "type": "image",
+          "position": {
+            "x": 15,
+            "y": 15,
+            "width": 75.17,
+            "height": 85
+          },
+          "url": "/assets/shame.gif",
+          "fragment": 1
+        }
+      ]
+    },
+    {
+      "id": "2b1ee497-3b53-47a0-804b-fbf327aa1e45",
+      "layout": "title-list",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "b1a79fa5-8dca-42ba-98b4-84fdb44ba27d",
+          "position": {
+            "x": 12,
+            "y": 14.166784612336173,
+            "width": 76,
+            "height": 15
+          },
+          "type": "heading",
+          "content": "This module is an unholy beast and should be cleansed with fire!",
+          "level": 1,
+          "textAlign": "center"
+        },
+        {
+          "id": "e5d3f5c0-a2bc-47f8-8313-37906f441244",
+          "type": "image",
+          "position": {
+            "x": 7.420000000000002,
+            "y": 25.221037450108984,
+            "width": 85.16,
+            "height": 85.83
+          },
+          "url": "/assets/elmo-fire.gif",
+          "fragment": 2
+        },
+        {
+          "id": "4246be4c-91cd-496e-9bcd-535845a68cde",
+          "position": {
+            "x": 12,
+            "y": 57.085,
+            "width": 76,
+            "height": 15
+          },
+          "type": "text",
+          "content": "<p><span style=\"color: rgb(255, 255, 255); font-size: 2.8cqw;\"><strong><mark data-color=\"rgba(52, 152, 219, 0.6)\" style=\"background-color: rgba(52, 152, 219, 0.6); color: inherit;\">Or just migrated to OOP and cleaned up... that works too</mark></strong></span></p>",
+          "textAlign": "center"
+        }
+      ],
+      "notes": "So let's look at some real functions and how they might be migrated over"
+    },
+    {
+      "id": "0d8e99a4-feae-4945-86fd-a1b58b989bd1",
+      "layout": "title",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "23f11981-0506-4173-8c06-cd51f0925bb9",
+          "type": "heading",
+          "position": {
+            "x": 15,
+            "y": 30,
+            "width": 70,
+            "height": 20
+          },
+          "content": "<code>hook_form_alter</code>",
+          "level": 1
+        },
+        {
+          "id": "1d7909e8-1d82-4e4d-83bf-872696d2db5f",
+          "type": "text",
+          "position": {
+            "x": 20,
+            "y": 55,
+            "width": 60,
+            "height": 10
+          },
+          "content": "<p>Member back on slide 10? I member...</p>"
+        }
+      ],
+      "notes": "Let's take a trip in our time machine of the mind back to slide 10's hook_form_alter example."
+    },
+    {
+      "id": "0102e3dc-35c4-4e19-8f6a-ce92ab5385f9",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "b0e56676-0572-4794-9d58-5983afe7d040",
+          "type": "heading",
+          "position": {
+            "x": 2.354999999999997,
+            "y": 8.505050505050505,
+            "width": 76,
+            "height": 10
+          },
+          "content": "Before",
+          "level": 2
+        },
+        {
+          "id": "5145f642-12ea-43ce-bb4f-9f6bb6963083",
+          "type": "code",
+          "position": {
+            "x": 2.354999999999997,
+            "y": 27.975,
+            "width": 95.29,
+            "height": 44.05
+          },
+          "code": "/**\n * Implements hook_form_alter().\n */\nfunction jddoesdev_core_form_alter(&$form, FormStateInterface $form_state, $form_id) {\n  if ($form_id == 'node_article_form' || $form_id == 'node_article_edit_form') {\n    $name = \\Drupal::currentUser()->getDisplayName();\n    $form['title']['widget'][0]['value']['#description'] = t('@name, keep article titles under 70 characters...', ['@name' => $name]);\n  }\n}",
+          "language": "php"
+        }
+      ],
+      "notes": "Looks alright for the most part, right? Can anyone tell what it does just by looking at it?\nAdds help text under the title on the article form. \nNotice the service call to currentUser? We're going to clean that up a bit as well.\nCall out `\\Drupal::currentUser()`: that's the thing we're going to inject.\n\n"
+    },
+    {
+      "id": "3b1d3b6c-ffb5-4094-a78f-d73c54db994c",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "cbcd202d-9689-4870-aa03-d94e472c3753",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 8,
+            "width": 76,
+            "height": 10
+          },
+          "content": "After",
+          "level": 2
+        },
+        {
+          "id": "29981293-0aff-4e9e-bd21-0f5862bdd6f6",
+          "type": "code",
+          "position": {
+            "x": 4.26,
+            "y": 22,
+            "width": 92.71,
+            "height": 60.95
+          },
+          "code": "namespace \\Drupal\\jddoesdev_core\\Hook;\n\nclass JddoesdevCoreFormHooks {\n\n  use StringTranslationTrait;\n\n  public function __construct(\n    protected readonly AccountInterface $currentUser,\n  ) {}\n\n  #[Hook('form_alter')]\n  public function formAlter(array &$form, FormStateInterface $form_state, string $form_id): void {\n    if ($form_id == 'node_article_form' || $form_id == 'node_article_edit_form') {\n      $name = $this->currentUser->getDisplayName();\n      $form['title']['widget'][0]['value']['#description'] = $this->t('@name, keep article titles under 70 characters...', ['@name' => $name]);\n    }\n  }\n\n}",
+          "language": "php"
+        }
+      ],
+      "notes": "Walk it line by line:\n- Constructor property promotion. Autowiring finds AccountInterface for you.\n- StringTranslationTrait gives us $this->t().\n- the attribute tells us what hook it is\n- Best of all, the body barely changed!  \n\nFeels good, right?  Let's try another!\n"
+    },
+    {
+      "id": "2eee339f-4fc2-4f4e-99f4-c52ffa9c8238",
+      "layout": "title",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "b4693591-40c6-40ff-9f25-8388cd0fc190",
+          "type": "heading",
+          "position": {
+            "x": 15,
+            "y": 30,
+            "width": 70,
+            "height": 20
+          },
+          "content": "<code>hook_preprocess_node</code>",
+          "level": 1
+        },
+        {
+          "id": "59c4e12b-2e77-4344-9f0a-8f4c0348957b",
+          "type": "text",
+          "position": {
+            "x": 20,
+            "y": 55.07260735414838,
+            "width": 60,
+            "height": 10
+          },
+          "content": "<p>Theme hooks deserved to be loved too!</p>"
+        }
+      ],
+      "notes": "Reading time on blog posts. Moves to JddoesdevCoreThemeHooks::preprocessNode(). Same pattern as B, so this one is quick.\n\nLIVE: /moving-hooks-classes still shows \"4 min read\" above the content."
+    },
+    {
+      "id": "9d689ea2-b927-4c79-bee1-999a242fa48f",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "0bf7be45-cb81-43ff-8907-b923b05bb03a",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 8,
+            "width": 76,
+            "height": 10
+          },
+          "content": "Before",
+          "level": 2
+        },
+        {
+          "id": "75f3c3aa-2b60-49e2-90b6-6e3997e6f240",
+          "type": "code",
+          "position": {
+            "x": 12,
+            "y": 22,
+            "width": 76,
+            "height": 72
+          },
+          "code": "/**\n * Implements hook_preprocess_node().\n */\nfunction jddoesdev_core_preprocess_node(array &$variables) {\n  $node = $variables['node'];\n  if ($node->bundle() != 'blog_post' || $variables['view_mode'] != 'full') {\n    return;\n  }\n  $text = strip_tags((string) $node->get('field_content')->value);\n  $minutes = max(1, (int) ceil(str_word_count($text) / 200));\n  $variables['content']['jddoesdev_reading_time'] = [\n    '#markup' => '<p class=\"reading-time\">' . t('@count min read', ['@count' => $minutes]) . '</p>',\n    '#weight' => -100,\n  ];\n}",
+          "language": "php"
+        }
+      ],
+      "notes": "Who can tell what this one does?\nJust estimates a reading time based on simple word count and puts it into a variable for the theme layer.  No big whoop."
+    },
+    {
+      "id": "4321f75c-c193-45bb-85b0-6078ef49cc22",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "f9379905-1459-4083-882c-3944d45688bc",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 8,
+            "width": 76,
+            "height": 10
+          },
+          "content": "After",
+          "level": 2
+        },
+        {
+          "id": "3fde56cc-f4d9-4b19-b70e-0a7a723ab8b3",
+          "type": "code",
+          "position": {
+            "x": 12,
+            "y": 22,
+            "width": 76,
+            "height": 72
+          },
+          "code": "namespace \\Drupal\\jddoesdev_core\\Hook;\n\nclass JddoesdevCoreThemeHooks {\n\n  use StringTranslationTrait;\n\n  #[Hook('preprocess_node')]\n  public function addReadingTime(array &$variables): void {\n    $node = $variables['node'];\n    if ($node->bundle() != 'blog_post' || $variables['view_mode'] != 'full') {\n      return;\n    }\n    $text = strip_tags((string) $node->get('field_content')->value);\n    $minutes = max(1, (int) ceil(str_word_count($text) / 200));\n    $variables['content']['jddoesdev_reading_time'] = [\n      '#markup' => '<p class=\"reading-time\">' . $this->t('@count min read', ['@count' => $minutes]) . '</p>',\n      '#weight' => -100,\n    ];\n  }\n\n}",
+          "language": "php"
+        }
+      ],
+      "notes": "It's almost identical.  We're slapping it in a class, we're throwing an attribute on it, and renaming the function to something more descriptive."
+    },
+    {
+      "id": "8a941b9b-ccf2-40f6-bf7f-36295c30180c",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "d434dfe7-599d-45e5-b8eb-8b6a15e86ba9",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 8,
+            "width": 76,
+            "height": 10
+          },
+          "content": "Three jobs, one hook...",
+          "level": 2
+        },
+        {
+          "id": "eb52060a-8c8d-4e74-8837-51de24568eab",
+          "type": "code",
+          "position": {
+            "x": 12,
+            "y": 22,
+            "width": 76,
+            "height": 72
+          },
+          "code": "/**\n * Implements hook_node_presave().\n */\nfunction jddoesdev_core_entity_presave(EntityInterface $entity) {\n  if ($entity->getEntityTypeId() != 'node') {\n    return;\n  }\n  $entity->setTitle(_jddoesdev_core_clean_title($entity->getTitle()));\n\n  if ($entity->bundle() == 'article' && $entity->get('field_description')->isEmpty() && ...) {\n    ...\n  }\n\n  \\Drupal::logger('jddoesdev_core')->notice('%title saved by %user.', [\n    ...\n  ]);\n}\n\nfunction _jddoesdev_core_clean_title($title) {\n  return preg_replace('/\\s+/', ' ', trim($title));\n}",
+          "language": "php"
+        }
+      ],
+      "notes": "Alright, I trimmed this one down a little bit to make it more readable, but what we've got here is a single hook with three jobs: \n- Remove extra spaces from the title\n- Fill an empty article description\n- Log who saved it. \nPlus the underscore helper only this function calls. The bodies are trimmed here; the full code is on the two \"After\" slides.\n\nPoint out the docblock: it says hook_node_presave, but the function is entity_presave. Nobody noticed for years because Drupal doesn't read docblocks. Rector does. Plant this, pay it off later."
+    },
+    {
+      "id": "b19d527e-2a78-45e0-b33b-fb070f0c0ef1",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "57702e59-e346-4e01-b8ee-e90216080569",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 8,
+            "width": 76,
+            "height": 10
+          },
+          "content": "After (part 1)",
+          "level": 2
+        },
+        {
+          "id": "c985da81-8534-451f-b0bd-9eccff5c2e1e",
+          "type": "code",
+          "position": {
+            "x": 12,
+            "y": 22,
+            "width": 76,
+            "height": 72
+          },
+          "code": "#[Hook('entity_presave')]\npublic function trimNodeTitle(EntityInterface $entity): void { ... }\n\n#[Hook('entity_presave')]\npublic function fillArticleDescription(EntityInterface $entity): void { ... }\n\n#[Hook('entity_presave')]\npublic function logNodeEditor(EntityInterface $entity): void { ... }\n\nprivate function cleanTitle(string $title): string { ... }",
+          "language": "php"
+        }
+      ],
+      "notes": "This is what I love about this.  Before, a function was named generically and you have to count on comments, documentation, or often just your failing memory (maybe that's just me?) to figure out what was going on.\n\nNow, we break it out into 3 different methods that we can name for what they actually do!\n\nThe best part of the migration, in my opinion. Same hook, three methods, and the names tell you what they do. The underscore helper becomes an actual private method.\n\nThe overview first, then the full code on the next two slides."
+    },
+    {
+      "id": "c09b8854-6f17-470e-96b1-d563bf68d709",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "9e24a24f-b067-4997-b397-f7c8d7af1c56",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 8,
+            "width": 76,
+            "height": 10
+          },
+          "content": "The title method",
+          "level": 2
+        },
+        {
+          "id": "92da59cf-58a8-4f23-8c88-705ab9da71f8",
+          "type": "code",
+          "position": {
+            "x": 12,
+            "y": 22,
+            "width": 76,
+            "height": 72
+          },
+          "code": "public function __construct(\n  protected readonly AccountInterface $currentUser,\n  protected readonly LoggerChannelFactoryInterface $loggerFactory,\n) {}\n\n#[Hook('entity_presave')]\npublic function trimNodeTitle(EntityInterface $entity): void {\n  if (!$entity instanceof NodeInterface) {\n    return;\n  }\n  $entity->setTitle($this->cleanTitle((string) $entity->getTitle()));\n}\n\nprivate function cleanTitle(string $title): string {\n  return preg_replace('/\\s+/', ' ', trim($title));\n}",
+          "language": "php"
+        }
+      ],
+      "notes": "A few more changes here than in previous:\n- Pulling in some services in the construct for later\n- Line 8: instanceof NodeInterface instead of comparing getEntityTypeId() to a string: the IDE knows it's a node after that.\n- Line 11: We're doing some typecasting because getTitle() might return null and break things with strict types\nand we threw that underscore function into an actual private function... or method if you're nasty"
+    },
+    {
+      "id": "6208fbe3-5f5b-487e-a87a-02674d7b018a",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "8fa4008a-b795-4c67-988b-34c87fcd61ec",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 8,
+            "width": 76,
+            "height": 10
+          },
+          "content": "Description and log",
+          "level": 2
+        },
+        {
+          "id": "b976c9e6-7319-4e2c-aca7-20e364c9465e",
+          "type": "code",
+          "position": {
+            "x": 12,
+            "y": 22,
+            "width": 76,
+            "height": 72
+          },
+          "code": "#[Hook('entity_presave')]\npublic function fillArticleDescription(EntityInterface $entity): void {\n  if (!$entity instanceof NodeInterface || $entity->bundle() != 'article') {\n    return;\n  }\n  if ($entity->get('field_description')->isEmpty() && !$entity->get('field_content')->isEmpty()) {\n    $text = strip_tags($entity->get('field_content')->value);\n    $entity->set('field_description', Unicode::truncate(trim($text), 200, TRUE, TRUE));\n  }\n}\n\n#[Hook('entity_presave')]\npublic function logNodeEditor(EntityInterface $entity): void {\n  if (!$entity instanceof NodeInterface) {\n    return;\n  }\n  $this->loggerFactory->get('jddoesdev_core')->notice('%title saved by %user.', [\n    '%title' => $entity->label(),\n    '%user' => $this->currentUser->getAccountName(),\n  ]);\n}",
+          "language": "php"
+        }
+      ],
+      "notes": "These pretty much stay the same as they would have been before if I had typed them out a few slides ago.\n\nKnow what else is cool? Each method checks only what it needs. If one breaks, the stack trace names the job that broke instead of so you'll get \"logNodeEditor\" instead of just \"entity_presave.\"\n\n"
+    },
+    {
+      "id": "9600617f-40ac-49e3-8222-081b8fb2a0b7",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "40d0f48c-1982-40a9-82e5-81c471477560",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 8,
+            "width": 76,
+            "height": 10
+          },
+          "content": "Before, in <code>.install</code>",
+          "level": 2
+        },
+        {
+          "id": "f8f49105-f9b1-48ef-beb7-4ba86f59a0f9",
+          "type": "code",
+          "position": {
+            "x": 3.64,
+            "y": 22,
+            "width": 94.35,
+            "height": 71.81
+          },
+          "code": "/**\n * Implements hook_requirements().\n */\nfunction jddoesdev_core_requirements($phase) {\n  $requirements = array();\n  if ($phase == 'runtime') {\n    // Added after the 2019 incident where stack traces showed on live.\n    if (\\Drupal::config('system.logging')->get('error_level') == 'verbose') {\n      $requirements['jddoesdev_core_error_level'] = [\n        'title' => t('Error message display'),\n        'value' => t('Verbose'),\n        'description' => t('Error messages, including backtraces, are shown to site visitors. Switch this off on production.'),\n        'severity' => REQUIREMENT_WARNING,\n      ];\n    }\n  }\n  return $requirements;\n}",
+          "language": "php"
+        }
+      ],
+      "notes": "Ooof, this one is a doozy.  So, the old old had everything run in hook_requirements() and you had to check by phase.  It could get a little unwieldy if you had a lot of stuff happening.\n\nRemoved in 13.0.0 without #[LegacyRequirementsHook]: the second deprecation from the opening."
+    },
+    {
+      "id": "8bef2f9f-591d-470b-83e5-ad39be90b114",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "2771a1b0-d835-4987-9250-93387013e114",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 8,
+            "width": 76,
+            "height": 10
+          },
+          "content": "It's just a phase...",
+          "level": 2
+        },
+        {
+          "id": "3c11f282-6165-4981-91c3-92c8d16f1006",
+          "type": "code",
+          "position": {
+            "x": 12,
+            "y": 22,
+            "width": 76,
+            "height": 72
+          },
+          "code": "public function __construct(\n  protected readonly ConfigFactoryInterface $configFactory,\n) {}\n\n#[Hook('runtime_requirements')]\npublic function runtime(): array {\n  $requirements = [];\n  // Added after the 2019 incident where stack traces showed on live.\n  if ($this->configFactory->get('system.logging')->get('error_level') == 'verbose') {\n    $requirements['jddoesdev_core_error_level'] = [\n      'title' => $this->t('Error message display'),\n      'value' => $this->t('Verbose'),\n      'description' => $this->t('Error messages, including backtraces, are shown to site visitors. Switch this off on production.'),\n      'severity' => RequirementSeverity::Warning,\n    ];\n  }\n  return $requirements;\n}",
+          "language": "php"
+        }
+      ],
+      "notes": "For the most part, the body looks the same, but look at the hook... go on, look at it... \n\nThe hook attribute names the phase itself instead of a bunch of if statements or a switch.\n"
+    },
+    {
+      "id": "7f091cce-61a1-4a5a-9694-c14c3d503510",
+      "layout": "title",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "327d6fe6-14a9-4f00-911f-967ae2689bcc",
+          "type": "heading",
+          "position": {
+            "x": 15,
+            "y": 30,
+            "width": 76.32,
+            "height": 20
+          },
+          "content": "What about token hooks",
+          "level": 1
+        },
+        {
+          "id": "0fc7c8f3-9ff9-4913-99d5-1c818c6eee19",
+          "type": "text",
+          "position": {
+            "x": 20,
+            "y": 55,
+            "width": 60,
+            "height": 10
+          },
+          "content": "`hook_token_info` + `hook_tokens` → a class, and delete `.tokens.inc`"
+        }
+      ],
+      "notes": "Include files like .tokens.inc are getting deprecated soon and removed in 12. \nYou might say it's not permanent ink\n\nwell i thought it was funny\n"
+    },
+    {
+      "id": "324efd5a-6b17-4b93-96b5-551cfb7ad1ae",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "ca13e520-ca20-4a1a-b686-136f9d6641b9",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 8,
+            "width": 76,
+            "height": 10
+          },
+          "content": "<code>hook_token_info</code>",
+          "level": 2
+        },
+        {
+          "id": "c556003a-cf93-4633-8bfb-fe9e33166971",
+          "type": "code",
+          "position": {
+            "x": 12,
+            "y": 22,
+            "width": 76,
+            "height": 72
+          },
+          "code": "// Before, in jddoesdev_core.tokens.inc\n/**\n * Implements hook_token_info().\n */\nfunction jddoesdev_core_token_info() {\n  $info['tokens']['site']['jddoesdev-copyright'] = array(\n    'name' => t('Copyright line'),\n    'description' => t('Copyright notice with the site name and current year.'),\n  );\n  return $info;\n}\n\n// After, in JddoesdevCoreTokenHooks\n#[Hook('token_info')]\npublic function tokenInfo(): array {\n  $info = [];\n  $info['tokens']['site']['jddoesdev-copyright'] = [\n    'name' => $this->t('Copyright line'),\n    'description' => $this->t('Copyright notice with the site name and current year.'),\n  ];\n  return $info;\n}",
+          "language": "php"
+        }
+      ],
+      "notes": "Just a quick one: Delete the .inc and put it in a class\n\nSmall thing worth pointing out: the old one never initialized $info. PHP let it slide. In the class we add $info = []; because we're being grown-ups now."
+    },
+    {
+      "id": "6a699718-e856-4402-89b3-ee96e8e69943",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "9cc49151-dd2c-4dab-b621-1e470582bed9",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 8,
+            "width": 76,
+            "height": 10
+          },
+          "content": "<code>hook_tokens</code>, before",
+          "level": 2
+        },
+        {
+          "id": "870c4857-6f3a-4ca0-a8a2-ff01648a562c",
+          "type": "code",
+          "position": {
+            "x": 12,
+            "y": 22,
+            "width": 76,
+            "height": 72
+          },
+          "code": "/**\n * Implements hook_tokens().\n */\nfunction jddoesdev_core_tokens($type, $tokens, array $data, array $options, BubbleableMetadata $bubbleable_metadata) {\n  $replacements = [];\n  if ($type == 'site' && isset($tokens['jddoesdev-copyright'])) {\n    $site_name = \\Drupal::config('system.site')->get('name');\n    $year = date('Y', \\Drupal::time()->getRequestTime());\n    $replacements[$tokens['jddoesdev-copyright']] = '© 2016–' . $year . ' ' . $site_name;\n    $bubbleable_metadata->addCacheTags(['config:system.site']);\n  }\n  return $replacements;\n}",
+          "language": "php"
+        }
+      ],
+      "notes": "Notice there are two \\Drupal:: (service) calls: config and time. Both get injected."
+    },
+    {
+      "id": "934baf36-96b4-415f-a9cc-a0557857010c",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "0cd7194b-76e9-4d26-a167-419df4d0d2ab",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 8,
+            "width": 76,
+            "height": 10
+          },
+          "content": "<code>hook_tokens</code>, after",
+          "level": 2
+        },
+        {
+          "id": "8648a651-5a8a-4dda-b8b6-8a408d347903",
+          "type": "code",
+          "position": {
+            "x": 12,
+            "y": 22,
+            "width": 76,
+            "height": 72
+          },
+          "code": "public function __construct(\n  protected readonly ConfigFactoryInterface $configFactory,\n  protected readonly TimeInterface $time,\n) {}\n\n#[Hook('tokens')]\npublic function tokens(string $type, array $tokens, array $data, array $options, BubbleableMetadata $bubbleable_metadata): array {\n  $replacements = [];\n  if ($type == 'site' && isset($tokens['jddoesdev-copyright'])) {\n    $site_name = $this->configFactory->get('system.site')->get('name');\n    $year = date('Y', $this->time->getRequestTime());\n    $replacements[$tokens['jddoesdev-copyright']] = '© 2016–' . $year . ' ' . $site_name;\n    $bubbleable_metadata->addCacheTags(['config:system.site']);\n  }\n  return $replacements;\n}",
+          "language": "php"
+        }
+      ],
+      "notes": "Inject in the constructor, put it in a class, delete .tokens.inc."
+    },
+    {
+      "id": "83db2766-5a4d-4078-9be2-6220e472593a",
+      "layout": "title-list",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "2012b38a-cfe3-4ce9-a0d2-0bbb6224df27",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 10,
+            "width": 76,
+            "height": 15
+          },
+          "content": "A couple boring ones",
+          "level": 2
+        },
+        {
+          "id": "4e5b5557-32bb-4b49-87c2-f8bbb728b2bf",
+          "type": "list",
+          "position": {
+            "x": 14,
+            "y": 30,
+            "width": 72,
+            "height": 58
+          },
+          "items": [
+            "<code>hook_help</code> → <code>JddoesdevCoreHelpHooks</code>",
+            "<code>hook_page_attachments</code> → <code>JddoesdevCoreThemeHooks</code>"
+          ],
+          "ordered": false
+        }
+      ],
+      "notes": "Most of your migration will look like this. Boring is good.\n\nHowever, just to keep your attention, I promise Keanu Reeves with Puppies if you stay awake through these."
+    },
+    {
+      "id": "d757dc25-e2bd-423e-8c7e-12b5ac306abc",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "67260496-22d0-49f0-a223-49d917bb5b42",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 8,
+            "width": 76,
+            "height": 10
+          },
+          "content": "<code>hook_help</code>",
+          "level": 2
+        },
+        {
+          "id": "a38f1462-564e-401d-b5b6-819ab778ae6b",
+          "type": "code",
+          "position": {
+            "x": 12,
+            "y": 22,
+            "width": 76,
+            "height": 72
+          },
+          "code": "// Before\n/**\n * Implements hook_help().\n */\nfunction jddoesdev_core_help($route_name, RouteMatchInterface $route_match) {\n  switch ($route_name) {\n    case 'help.page.jddoesdev_core':\n      return '<p>' . t('Site-wide tweaks and glue code for the JD Does Dev site.') . '</p>';\n  }\n}\n\n// After, in JddoesdevCoreHelpHooks\n#[Hook('help')]\npublic function help(?string $route_name, RouteMatchInterface $route_match): ?string {\n  switch ($route_name) {\n    case 'help.page.jddoesdev_core':\n      return '<p>' . $this->t('Site-wide tweaks and glue code for the JD Does Dev site.') . '</p>';\n  }\n  return NULL;\n}",
+          "language": "php"
+        }
+      ],
+      "notes": "Pretty much a copy and paste job here.\n?string on the way in because core can pass NULL as the route name. ?string on the way out, with an explicit return NULL, because the old function just fell off the end."
+    },
+    {
+      "id": "5e26a232-89fe-4c97-9913-d31f0530b1dd",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "7c29674d-a209-4d55-825a-b0f1b2aa9b95",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 8,
+            "width": 76,
+            "height": 10
+          },
+          "content": "<code>hook_page_attachments</code>",
+          "level": 2
+        },
+        {
+          "id": "0ac54f3c-a827-4ef7-93cd-361400d1b352",
+          "type": "code",
+          "position": {
+            "x": 12,
+            "y": 22,
+            "width": 76,
+            "height": 72
+          },
+          "code": "// Before\n/**\n * Implements hook_page_attachments().\n */\nfunction jddoesdev_core_page_attachments(array &$attachments) {\n  $attachments['#attached']['html_head'][] = [\n    [\n      '#tag' => 'meta',\n      '#attributes' => ['name' => 'built-by', 'content' => 'jddoesdev'],\n    ],\n    'jddoesdev_core_built_by',\n  ];\n}\n\n// After, in JddoesdevCoreThemeHooks\n#[Hook('page_attachments')]\npublic function pageAttachments(array &$attachments): void {\n  ...\n}",
+          "language": "php"
+        }
+      ],
+      "notes": "This is a complete copy and paste job\nThe most boring diff in the talk. The body is identical, so the after just shows `...`. Goes into the theme hooks class from stage C because it deals with what ends up on the page."
+    },
+    {
+      "id": "06427748-573c-4372-81c2-39f5b48f0c60",
+      "layout": "freestyle",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "8d4f8f71-7a94-4196-90fb-b8ab3e17b2a0",
+          "type": "image",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 100,
+            "height": 100
+          },
+          "url": "/assets/keanu_puppies_2.gif"
+        }
+      ],
+      "notes": "As promised... "
+    },
+    {
+      "id": "4fc67c15-be02-48ab-80f2-de48fa88496f",
+      "layout": "title-list",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "9bddb32d-ee78-47aa-8aa4-702627252ec9",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 10,
+            "width": 76,
+            "height": 15
+          },
+          "content": "What's left and what's gone?",
+          "level": 2
+        },
+        {
+          "id": "b6dd7cb1-88d2-4052-abdf-18e3a25f5d9f",
+          "type": "list",
+          "position": {
+            "x": 14,
+            "y": 30,
+            "width": 72,
+            "height": 58
+          },
+          "items": [
+            "<code>.module</code> is empty, so it's gone",
+            "<code>.install</code> stays:<ul><li><code>hook_install</code></li><li><code>hook_update_N</code></li><li><code>hook_uninstall</code></li></ul>",
+            "These have no attribute equivalent (yet?)"
+          ],
+          "ordered": false,
+          "fragmentPerItem": true
+        }
+      ],
+      "notes": "Not everything moves. Install, update and uninstall hooks stay procedural. One-line comment in .install says so, so the next person doesn't try.\n\nDeprecation notices from the module after J: none."
+    },
+    {
+      "id": "b7109fd6-0cdf-4ced-ab86-6f3a26c6f0b5",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "edac0560-92ca-472a-a9c7-99746cc37d21",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 8,
+            "width": 76,
+            "height": 10
+          },
+          "content": "<code>.install</code> stays procedural",
+          "level": 2
+        },
+        {
+          "id": "d2b2727d-27cd-452f-8e8d-c983e8233612",
+          "type": "code",
+          "position": {
+            "x": 12,
+            "y": 22,
+            "width": 76,
+            "height": 72
+          },
+          "code": "// These hooks have no #[Hook] attribute equivalent, so they stay procedural.\n\n/**\n * Implements hook_install().\n */\nfunction jddoesdev_core_install() {\n  \\Drupal::state()->set('jddoesdev_core.mail_footer', 'Sent from the JD Does Dev site.');\n}\n\n/**\n * Implements hook_uninstall().\n */\nfunction jddoesdev_core_uninstall() {\n  \\Drupal::state()->delete('jddoesdev_core.mail_footer');\n}\n\n/**\n * Set the default mail footer for sites installed before it existed.\n */\nfunction jddoesdev_core_update_8001() {\n  ...\n}",
+          "language": "php"
+        }
+      ],
+      "notes": "The comment at the top is the only line demo-j adds to this file. \\Drupal:: calls stay here: no class, nothing to inject into.\n\nupdate_8001: a Drupal 8 era number. Ten years old, remember?"
+    },
+    {
+      "id": "322bd0fb-0473-4d36-988b-22af263c7c94",
+      "layout": "title",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "bde37844-1232-4df4-8e82-fd9e4540ac22",
+          "type": "heading",
+          "position": {
+            "x": 15,
+            "y": 3.5499759390834242,
+            "width": 70,
+            "height": 20
+          },
+          "content": "What about the bots?",
+          "level": 1,
+          "textAlign": "center"
+        },
+        {
+          "id": "727c8720-6953-4175-9312-654689ddd548",
+          "type": "image",
+          "position": {
+            "x": 14.25,
+            "y": 23.549975939083424,
+            "width": 71.5,
+            "height": 71.96
+          },
+          "url": "/assets/meep%20morp.gif"
+        }
+      ],
+      "notes": "What about claude or codex or chatgpt or copilot or even the AIs that don't start with \"C\"?\n\nShort answer, probably, but that's assuming you're prompting correctly and that what you're using has the right context to accurately migrate.\n\nLike I say whenever anyone asks me about AI, it's a great tool, but you should know what it's doing and be able to check its work with some certainty."
+    },
+    {
+      "id": "c3d6474e-133b-4df0-a58b-f01569d2e4c4",
+      "layout": "title",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "7a27ec29-56a5-444f-86ca-9676b0e9dfdf",
+          "type": "heading",
+          "position": {
+            "x": 15,
+            "y": 30,
+            "width": 70,
+            "height": 20
+          },
+          "content": "Drupal Rector",
+          "level": 1,
+          "textAlign": "center"
+        },
+        {
+          "id": "3fe1fbf4-1300-4243-8091-d2dce8a322ca",
+          "type": "text",
+          "position": {
+            "x": 20,
+            "y": 55,
+            "width": 60,
+            "height": 10
+          },
+          "content": ""
+        }
+      ],
+      "notes": "I did look at using Drupal rector for this, and who's familiar with the term \"Garbage In Garbage Out\"?\n\nBasically, the answer with rector is \"it depends\""
+    },
+    {
+      "id": "1998107f-d08d-417e-93de-99c30f949ae3",
+      "layout": "title-list",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "0840cfed-da8e-457e-8a33-f9fbdbcb99d2",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 10,
+            "width": 76,
+            "height": 15
+          },
+          "content": "The scorecard",
+          "level": 2
+        },
+        {
+          "id": "434c8169-42f6-4efd-bded-99df7f21b578",
+          "type": "list",
+          "position": {
+            "x": 14,
+            "y": 30,
+            "width": 72,
+            "height": 58
+          },
+          "items": [
+            "Converted 8 of 12 hook functions",
+            "Skipped <code>entity_presave</code>: the docblock named the wrong hook",
+            "Skipped <code>mail_alter</code>: no docblock at all",
+            "Left <code>#[LegacyHook]</code> wrappers and wrote a <code>services.yml</code>",
+            "Without <code>--clear-cache</code>, changed nothing and <strong>reported success</strong>"
+          ],
+          "ordered": false,
+          "fragment": 1,
+          "fragmentPerItem": true,
+          "lineHeight": 1.4
+        }
+      ],
+      "notes": "When I ran it on my fake real module that wasn't based on anything I'd ever write ever, there were mixed results.\nIt did convert most of the functions, but Rector finds hooks by the docblock, not the function name. Remember the wrong docblock from earlier? That didn't get fixed\nIf there's no docblock at all, it definitely won't find and convert the function.\nIt also didn't take into account the version for the module in the .info and wrote a shim and wrote a services file for the new classes.  This isn't horrible, but it's unnecessary in 11.3+ and ends up being manual cleanup.\n\nThe --clear-cache one is the scariest: green output, zero changes.\nIf you run rector once to clean up deprecations, the module's files get cached.  If you do a second pass to do the hook conversion without the clear-cache flag, it'll report green and nothing will have changed."
+    },
+    {
+      "id": "2f26cbdf-4f56-4ab0-b3c0-ef9f1f92d3ff",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "5381b535-3ad2-4452-92d9-7ae70fb7f272",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 8,
+            "width": 76,
+            "height": 10
+          },
+          "content": "What Rector wrote",
+          "level": 2
+        },
+        {
+          "id": "0c4ae2d3-d102-416b-90e8-8347e6919939",
+          "type": "code",
+          "position": {
+            "x": 12,
+            "y": 22,
+            "width": 76,
+            "height": 72
+          },
+          "code": "class JddoesdevCoreHooks\n{\n    use StringTranslationTrait;\n    /**\n     * Implements hook_help().\n     */\n    #[Hook('help')]\n    public function help($route_name, \\Drupal\\Core\\Routing\\RouteMatchInterface $route_match)\n    {\n        switch ($route_name) {\n            ...",
+          "language": "php"
+        }
+      ],
+      "notes": "Let's take a look at how rector handled this as of mid October\n\nOne big class for everything. No types. Fully qualified names inline. PSR-2 braces, not Drupal standards. "
+    },
+    {
+      "id": "cd15a511-eb8c-4b0d-a5ac-29d4d0fca700",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "cad9998e-b20b-472a-8184-048b9c90fd20",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 8,
+            "width": 76,
+            "height": 10
+          },
+          "content": "What I wrote instead",
+          "level": 2
+        },
+        {
+          "id": "c32f07d7-5dc2-453a-88e4-7f9cfc140e75",
+          "type": "code",
+          "position": {
+            "x": 12,
+            "y": 22,
+            "width": 76,
+            "height": 72
+          },
+          "code": "#[Hook('help')]\npublic function help(?string $route_name, RouteMatchInterface $route_match): ?string {\n  switch ($route_name) {\n    case 'help.page.jddoesdev_core':\n      return '<p>' . $this->t('Site-wide tweaks...') . '</p>';\n  }\n  return NULL;\n}",
+          "language": "php"
+        }
+      ],
+      "notes": "Grouped class, types (nullable where core passes NULL), Drupal formatting, explicit return.\n\nVerdict: Rector is a decent first draft if your docblocks are honest. Plan to rewrite what it gives you. And always run it with --clear-cache."
+    },
+    {
+      "id": "8513d70d-03b7-4930-a35b-5549bb0dd0a8",
+      "layout": "code-block",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "f4361928-2b0e-4608-a150-b16f51b904b9",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 8,
+            "width": 76,
+            "height": 10
+          },
+          "content": "About those shims",
+          "level": 2
+        },
+        {
+          "id": "b642b95e-6a74-44bd-b226-0b2ff29d79d1",
+          "type": "code",
+          "position": {
+            "x": 12,
+            "y": 22,
+            "width": 76,
+            "height": 72
+          },
+          "code": "/**\n * Implements hook_help().\n */\n#[LegacyHook]\nfunction jddoesdev_core_help($route_name, RouteMatchInterface $route_match) {\n  return \\Drupal::service(JddoesdevCoreHooks::class)->help($route_name, $route_match);\n}",
+          "language": "php"
+        }
+      ],
+      "notes": "This is what Rector left in .module. #[LegacyHook] keeps the procedural function for older cores that don't know about hook classes, and newer cores skip it.\n\nYou need this only if your module still supports cores where hook classes don't work. Contrib maintainers are probably going to use these a lot, but for your own custom code that's on 11.3+, no: delete it."
+    },
+    {
+      "id": "20b0c2cc-1b3f-48e8-834e-c141f289d1a0",
+      "layout": "title-list",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "38a45a81-82d5-42dc-96c4-8859dd1ce3a2",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 10,
+            "width": 76,
+            "height": 15
+          },
+          "content": "Things I learned the hard way",
+          "level": 2
+        },
+        {
+          "id": "38219417-49ee-44f4-a817-df70d577550c",
+          "type": "list",
+          "position": {
+            "x": 14,
+            "y": 30,
+            "width": 72,
+            "height": 58
+          },
+          "items": [
+            "Plain <code>.module</code> hooks don't warn you (yet)",
+            "Deprecation notices don't reach dblog",
+            "Canvas templates skip <code>hook_preprocess_node</code>",
+            "Strict types + a surprise NULL = TypeError",
+            "<code>drush cr</code> after every change. Every. Time."
+          ],
+          "ordered": false,
+          "fragment": 1,
+          "fragmentPerItem": true
+        }
+      ],
+      "notes": "Regular hooks aren't warning you yet (as of mid october)\nYou need to do some extra work to get your deprecation notices into dblog\n"
+    },
+    {
+      "id": "e6b0f68b-ead8-43d0-8dd2-f0e980215718",
+      "layout": "title-list",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "5f364fea-e3a4-4275-a02b-56d256a29603",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 10,
+            "width": 76,
+            "height": 15
+          },
+          "content": "Your migration checklist",
+          "level": 2
+        },
+        {
+          "id": "158e3104-86ea-407b-9782-88e18fae47c1",
+          "type": "list",
+          "position": {
+            "x": 14,
+            "y": 30,
+            "width": 72,
+            "height": 58
+          },
+          "items": [
+            "Catch your deprecation notices with an error handler",
+            "Delete what you don't need",
+            "Group what's left into classes by topic",
+            "Convert one hook per commit",
+            "Check each one still fires",
+            "Leave install, update and uninstall hooks alone"
+          ],
+          "ordered": true,
+          "fragmentPerItem": true
+        }
+      ],
+      "notes": "Build a simple error handler\nGet rid of those \"temporary fixes\" and \"todos\" while you're migrating\nLogically group your functionality into classes that make sense\nThis one is my preference, only commit one hook at a time so you have a good history to look back on fondly when you're reminiscing about the good ol' days \nVERIFY YOUR WORK\ninstall, update, and uninstall hooks all remain procedural"
+    },
+    {
+      "id": "cf9d4252-dbe3-4413-b56f-9ab6d9f357ab",
+      "layout": "title-list",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "08a63f30-4f4c-4587-9e3e-462469c28f11",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 10,
+            "width": 76,
+            "height": 15
+          },
+          "content": "A few friendly resources",
+          "level": 2
+        },
+        {
+          "id": "5cbd7430-7af0-46d2-a8fb-ea819c063b58",
+          "type": "list",
+          "position": {
+            "x": 14,
+            "y": 30,
+            "width": 72,
+            "height": 58
+          },
+          "items": [
+            "The code: github.com/JDDoesDev/drupal-oop-migration-examples",
+            "OOP hooks change record: drupal.org/node/3442349",
+            "Converting from <code>.module</code>: drupal.org/docs/develop/creating-modules/converting-from-module-file-to-an-object-oriented-class-method"
+          ],
+          "ordered": false
+        }
+      ],
+      "notes": "Now, the code I used is in a repo that you can take a look at.  Everything is linked in the README so you can look at the diffs instead of running the site\nEvery stage is a compare link in the README. You don't need to run the site to follow along.\n\nThere's the change record URL\n\nAnd here's the d.o guide on converting\n\nTODO: QR code for the repo, like the FLDC deck."
+    },
+    {
+      "id": "a66e6494-eb08-4f47-b409-60cb6c40f6c4",
+      "layout": "title",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "1bafc5ef-6323-4a3a-af42-5e1136186edb",
+          "type": "heading",
+          "position": {
+            "x": 15,
+            "y": 30,
+            "width": 70,
+            "height": 20
+          },
+          "content": "Questions?",
+          "level": 1
+        }
+      ]
+    },
+    {
+      "id": "e2d683e6-64b7-465a-baf5-ee090c5d4add",
+      "layout": "title-list",
+      "transition": "none",
+      "elements": [
+        {
+          "id": "fe7ed2d7-f952-4646-ba6d-3ec8c569feaf",
+          "type": "heading",
+          "position": {
+            "x": 12,
+            "y": 10,
+            "width": 76,
+            "height": 15
+          },
+          "content": "Thank you!",
+          "level": 2
+        },
+        {
+          "id": "55a011f8-51c6-4885-a7d6-d8cef36e5c33",
+          "type": "text",
+          "position": {
+            "x": 14,
+            "y": 30,
+            "width": 72,
+            "height": 8.64
+          },
+          "content": "My Links (definitely not a rickroll):"
+        },
+        {
+          "id": "fb35d7e5-1129-425a-9819-94df68891874",
+          "type": "image",
+          "position": {
+            "x": 25,
+            "y": 38.64,
+            "width": 50,
+            "height": 60
+          },
+          "url": "/assets/doras_qrcode.png"
+        }
+      ],
+      "notes": "TODO: add QR images for links and session survey."
+    }
+  ],
+  "createdAt": "2026-10-12T22:47:56.153Z",
+  "updatedAt": "2026-11-07T16:55:49.628Z"
+}
